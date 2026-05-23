@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+#
+# SparkAdvisor launcher.
+#
+# Run as root on a cluster client node. Performs the fixed Kerberos init, then
+# launches the CLI on JDK 21 with the module-open flags Spark 3.5.1 needs for
+# event-log replay/reflection.
+#
+# Usage:
+#   bin/sparkadvisor analyze --path hdfs:///.../application_xxx --statement-id <ID>
+#
+set -euo pipefail
+
+# --- 1) Cluster environment + Kerberos (fixed commands per ops convention) -----
+# shellcheck disable=SC1091
+source /opt/client/bigdata_env
+kinit -kt /opt/client/keytab/ossuser.keytab ossuser
+
+# --- 2) Locate the fat-jar ------------------------------------------------------
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+APP_HOME="$(cd "${SCRIPT_DIR}/.." && pwd)"
+JAR="${SPARKADVISOR_JAR:-${APP_HOME}/sparkadvisor-cli/target/sparkadvisor-cli.jar}"
+if [[ ! -f "${JAR}" ]]; then
+  echo "[sparkadvisor] CLI jar not found: ${JAR}" >&2
+  echo "[sparkadvisor] Build first on a node with Maven Central access: mvn -q -DskipTests package" >&2
+  exit 1
+fi
+
+# --- 3) Classpath: bundle Spark + Hadoop jars from the cluster client -----------
+# Spark/Hadoop are 'provided' in the build, so supply them at runtime here.
+# Prefer the env exported by bigdata_env; fall back to common locations.
+SPARK_HOME="${SPARK_HOME:-/opt/client/Spark2x/spark}"
+HADOOP_CONF_DIR="${HADOOP_CONF_DIR:-/opt/client/HDFS/hadoop/etc/hadoop}"
+CP="${JAR}:${HADOOP_CONF_DIR}:${SPARK_HOME}/jars/*"
+
+# --- 4) JDK 21 module opens required by Spark 3.5.1 -----------------------------
+JAVA_OPTS=(
+  --add-opens=java.base/java.lang=ALL-UNNAMED
+  --add-opens=java.base/java.lang.invoke=ALL-UNNAMED
+  --add-opens=java.base/java.nio=ALL-UNNAMED
+  --add-opens=java.base/sun.nio.ch=ALL-UNNAMED
+  --add-opens=java.base/java.util=ALL-UNNAMED
+  --add-opens=java.base/java.util.concurrent=ALL-UNNAMED
+  -Dfile.encoding=UTF-8
+)
+
+exec java "${JAVA_OPTS[@]}" -cp "${CP}" io.sparkadvisor.cli.SparkAdvisorCli "$@"

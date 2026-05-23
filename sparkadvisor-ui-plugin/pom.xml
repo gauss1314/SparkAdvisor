@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>io.sparkadvisor</groupId>
+    <artifactId>sparkadvisor</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+  </parent>
+
+  <artifactId>sparkadvisor-ui-plugin</artifactId>
+  <name>SparkAdvisor :: UI Plugin</name>
+  <description>History Server tab via AppHistoryServerPlugin (ServiceLoader-discovered)</description>
+
+  <dependencies>
+    <!-- Our engine: parse + analyze + predict + render -->
+    <dependency>
+      <groupId>io.sparkadvisor</groupId>
+      <artifactId>sparkadvisor-core</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.sparkadvisor</groupId>
+      <artifactId>sparkadvisor-report</artifactId>
+    </dependency>
+
+    <!-- Spark UI / History Server APIs: provided by the SHS runtime classpath -->
+    <dependency>
+      <groupId>org.apache.spark</groupId>
+      <artifactId>spark-core_${scala.binary.version}</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.spark</groupId>
+      <artifactId>spark-sql_${scala.binary.version}</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.hadoop</groupId>
+      <artifactId>hadoop-client</artifactId>
+    </dependency>
+
+    <!-- javax.servlet for WebUIPage render(HttpServletRequest); provided by Spark/Jetty -->
+    <dependency>
+      <groupId>javax.servlet</groupId>
+      <artifactId>javax.servlet-api</artifactId>
+      <version>4.0.1</version>
+      <scope>provided</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <!-- Build a fat-jar bundling our engine (core/analyzer/predictor/report) + jackson/t-digest,
+         while keeping Spark/Hadoop provided. Drop this single jar into the SHS classpath. -->
+    <finalName>sparkadvisor-ui-plugin</finalName>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-shade-plugin</artifactId>
+        <executions>
+          <execution>
+            <phase>package</phase>
+            <goals><goal>shade</goal></goals>
+            <configuration>
+              <createDependencyReducedPom>false</createDependencyReducedPom>
+              <!-- Merge META-INF/services so our AppHistoryServerPlugin service file
+                   is preserved alongside any others. -->
+              <transformers>
+                <transformer
+                    implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+              </transformers>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>

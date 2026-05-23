@@ -1,0 +1,148 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>io.sparkadvisor</groupId>
+  <artifactId>sparkadvisor</artifactId>
+  <version>0.1.0-SNAPSHOT</version>
+  <packaging>pom</packaging>
+  <name>SparkAdvisor</name>
+  <description>Spark Event Log offline analyzer and tuning advisor (Java 21, Spark 3.5.1)</description>
+
+  <modules>
+    <module>sparkadvisor-core</module>
+    <module>sparkadvisor-analyzer</module>
+    <module>sparkadvisor-predictor</module>
+    <module>sparkadvisor-report</module>
+    <module>sparkadvisor-advisor</module>
+    <module>sparkadvisor-cli</module>
+    <module>sparkadvisor-ui-plugin</module>
+  </modules>
+
+  <properties>
+    <maven.compiler.release>21</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+    <!-- Spark 3.5.1 is built against Scala 2.12 by default -->
+    <spark.version>3.5.1</spark.version>
+    <scala.binary.version>2.12</scala.binary.version>
+    <hadoop.version>3.3.4</hadoop.version>
+
+    <picocli.version>4.7.6</picocli.version>
+    <jackson.version>2.15.2</jackson.version> <!-- align with Spark 3.5.1 bundled Jackson -->
+    <tdigest.version>3.3</tdigest.version>
+    <junit.version>5.10.2</junit.version>
+  </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <!-- ===== Spark / Hadoop: provided, never shaded into the fat-jar ===== -->
+      <dependency>
+        <groupId>org.apache.spark</groupId>
+        <artifactId>spark-core_${scala.binary.version}</artifactId>
+        <version>${spark.version}</version>
+        <scope>provided</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.spark</groupId>
+        <artifactId>spark-sql_${scala.binary.version}</artifactId>
+        <version>${spark.version}</version>
+        <scope>provided</scope>
+      </dependency>
+      <!-- Optional: only present when analyzing Spark Thrift Server logs.
+           We match its events by class name reflectively, so keep it provided+optional. -->
+      <dependency>
+        <groupId>org.apache.spark</groupId>
+        <artifactId>spark-hive-thriftserver_${scala.binary.version}</artifactId>
+        <version>${spark.version}</version>
+        <scope>provided</scope>
+        <optional>true</optional>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.hadoop</groupId>
+        <artifactId>hadoop-client</artifactId>
+        <version>${hadoop.version}</version>
+        <scope>provided</scope>
+      </dependency>
+
+      <!-- ===== Compile deps (shaded into cli fat-jar) ===== -->
+      <dependency>
+        <groupId>com.fasterxml.jackson.core</groupId>
+        <artifactId>jackson-databind</artifactId>
+        <version>${jackson.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>info.picocli</groupId>
+        <artifactId>picocli</artifactId>
+        <version>${picocli.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>com.tdunning</groupId>
+        <artifactId>t-digest</artifactId>
+        <version>${tdigest.version}</version>
+      </dependency>
+
+      <!-- Internal modules -->
+      <dependency>
+        <groupId>io.sparkadvisor</groupId>
+        <artifactId>sparkadvisor-core</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.sparkadvisor</groupId>
+        <artifactId>sparkadvisor-analyzer</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.sparkadvisor</groupId>
+        <artifactId>sparkadvisor-predictor</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.sparkadvisor</groupId>
+        <artifactId>sparkadvisor-report</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.sparkadvisor</groupId>
+        <artifactId>sparkadvisor-advisor</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+
+      <!-- ===== Test ===== -->
+      <dependency>
+        <groupId>org.junit.jupiter</groupId>
+        <artifactId>junit-jupiter</artifactId>
+        <version>${junit.version}</version>
+        <scope>test</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <build>
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-compiler-plugin</artifactId>
+          <version>3.13.0</version>
+          <configuration>
+            <release>21</release>
+          </configuration>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-surefire-plugin</artifactId>
+          <version>3.2.5</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-shade-plugin</artifactId>
+          <version>3.5.1</version>
+        </plugin>
+      </plugins>
+    </pluginManagement>
+  </build>
+</project>

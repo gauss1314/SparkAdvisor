@@ -42,12 +42,13 @@ class ReportPipelineTest {
         SqlExecution sql = new SqlExecution(42L, "20260521_demo",
                 "/* 20260521_demo */ select c, count(*) from t group by c", "", 1000L, 16000L,
                 false, List.of(7L));
-        Job job = new Job(7, 42L, List.of(1), 1000L, 16000L);
+        Job job = new Job(7, 42L, List.of(1), 1000L, 16000L, false);
         Map<String, String> conf = new LinkedHashMap<>();
         conf.put("spark.executor.instances", "4");
         conf.put("spark.executor.cores", "2");
         return new ApplicationModel("app-demo", "Demo", 0L, 17000L, false, conf,
-                List.of(sql), List.of(job), List.of(skewedStage()), java.util.List.of());
+                List.of(sql), List.of(job), List.of(skewedStage()), java.util.List.of(),
+                java.util.List.of());
     }
 
     @Test

@@ -1,6 +1,6 @@
 # SparkAdvisor
 
-SparkAdvisor 是一个以 **Java 21** 实现、面向 **Apache Spark 3.5.1** 的 Event Log 离线分析与调优顾问。它读取 HDFS 上归档的 Spark event log，复用 Spark 自带的 `ReplayListenerBus` / `JsonProtocol` 还原事件，计算关键路径与硬指标，基于规则和成本模型给出调优建议，并输出自包含 HTML 或 JSON 报告。
+SparkAdvisor 是一个以 **Java 21** 实现、面向 **Apache Spark 3.5.1** 的 Event Log 离线分析与调优顾问。它读取 HDFS 上归档的 Spark event log，复用 Spark 自带的 `ReplayListenerBus` / `JsonProtocol` 还原事件，计算关键路径与硬指标，基于规则和成本模型给出调优建议，并输出自包含 HTML 或 JSON 报告。除单条 SQL 诊断外，项目还提供 `sparkadvisor-monitor` 队列分析层，用于长驻查询队列的一整轮跨 SQL 聚合分析。
 
 完整设计见 [SparkAdvisor-design.md](SparkAdvisor-design.md)，仓库协作与实现约束见 [AGENTS.md](AGENTS.md)。
 
@@ -12,11 +12,13 @@ SparkAdvisor 是一个以 **Java 21** 实现、面向 **Apache Spark 3.5.1** 的
 - **规则诊断**：内置 8 条 AQE 感知规则，覆盖数据倾斜、spill、并发不足、过度并行、小文件、GC、broadcast join 机会与调度等待。
 - **调参预测**：对 shuffle partition 与 executor/core 伸缩做成本模型估计，输出假设、置信度和可能反转条件；倾斜场景会明确提示“调分区通常无效”。
 - **Advisor 建议**：默认使用离线确定性的 `RuleBasedAdvisor`；可通过 `--advise llm` 调用 LLM Advisor。LLM 只消费结构化 `AnalysisResult` JSON，绝不发送原始 event log。
-- **History Server 集成**：提供 Spark History Server tab 插件，通过 `AppHistoryServerPlugin` / `ServiceLoader` 接入，点开 tab 后按需重解析日志并缓存结果。
+- **队列级监控分析**：`queue-report` 汇总一整个长驻应用的所有 SQL，输出延迟分位、瓶颈聚类、固定资源池利用率、争用受限查询、资源大户与全局调参建议。
+- **History Server 集成**：提供 Spark History Server tab 插件，通过 `AppHistoryServerPlugin` / `ServiceLoader` 接入；默认展示队列级报告，输入 StatementID 可下钻单条 SQL。
 
 ## 架构原则
 
 SparkAdvisor 的唯一数据契约是 `AnalysisResult` JSON。CLI、HTML 报告、History Server tab 和 Advisor 都只消费这一契约，不绕过它直接读取领域模型。
+队列级分析使用平级契约 `QueueAnalysisResult` JSON，同样不暴露 Spark 类型。
 
 ```text
 HDFS Event Log
@@ -25,6 +27,7 @@ HDFS Event Log
   -> sparkadvisor-predictor shuffle/executor 成本模型预测
   -> sparkadvisor-report    AnalysisResult JSON 与自包含 HTML 渲染
   -> sparkadvisor-advisor   RuleBasedAdvisor / LlmAdvisor
+  -> sparkadvisor-monitor   QueueAnalysisResult、争用时间轴、队列级规则与报告
   -> sparkadvisor-cli       命令行入口
   -> sparkadvisor-ui-plugin Spark History Server tab
 ```
@@ -34,28 +37,29 @@ HDFS Event Log
 - 源码使用 Java 21；不使用 Scala 编写源码。
 - Spark/Hadoop 依赖全部是 `provided`，不会打进 CLI 或插件 fat-jar；运行时由集群 `/opt/client` 环境提供 classpath。
 - 事件解析不手写 Spark event schema，统一复用 Spark 的回放机制，降低跨小版本字段演化风险。
-- 解析必须流式、低内存；task 指标在 `onTaskEnd` 增量进入分位数估计器，默认不保留全部原始 task。
+- 解析必须流式、低内存；task 指标在 `onTaskEnd` 增量进入分位数估计器，默认不保留全部原始 task。队列争用分析会显式开启轻量 `TaskInterval` 收集，只保存 launch/finish/execution 归属。
 - HTML 报告是单文件自包含输出，内联 CSS/SVG/JSON，不引入前端构建链。
 
 ## 当前状态
 
-项目已完成 M1-M3 与 F4 功能：
+项目已完成 M1-M3、F4 与监控模块主体功能：
 
 - **M1**：父 POM、`core/report/cli`、领域模型、分位数估计器、StatementID 提取与定位、event log reader/parser、`MetricAggregator`、`AnalysisResult`、HTML/JSON 报告、CLI `analyze` 端到端。
 - **M2**：`sparkadvisor-analyzer` 规则引擎与 `sparkadvisor-predictor` 成本模型预测；报告新增 Predictions 区域。
 - **M3**：History Server tab 插件已实现，采用自给自足策略重解析 event log，不依赖 SHS 内部 store。
 - **F4**：`TuningAdvisor`、`RuleBasedAdvisor`、`LlmAdvisor`、`AnthropicLlmProvider`、prompt 构造与 LLM JSON 响应解析已实现；LLM 失败时优雅降级。
+- **Monitor**：新增 `sparkadvisor-monitor`，包含 `QueueAnalyzer`、`QuerySeriesCollector`、`ContentionTimeline`、`QueueAggregator`、`QueueRuleEngine`、`QueueAnalysisResult`、队列 HTML/JSON 渲染；CLI 新增 `queue-report`，SHS tab 空 StatementID 时异步生成队列报告。
 
 已验证项：
 
-- 纯 Java 层（core + analyzer + predictor + report）已用 JDK 21 真编译通过。
+- 全模块已用 JDK 21 执行 `mvn -q test` 通过。
 - analyzer、predictor、advisor、CoreTimeline、规则负例、LLM JSON 解析与端到端报告渲染相关测试已通过。
-- 所有纯 Java 模块提交版 JUnit 测试已对产品类编译通过。
+- monitor 的争用受限分类、瓶颈聚类、队列级建议、HTML/JSON 契约测试已通过。
 
 仍需在可访问 Maven Central 的机器上首编验证：
 
-- 触及 Spark/Hadoop 的 eventlog 层、CLI、ui-plugin 中使用 Spark 内部 API 的类。
-- 相关代码已按 Spark 3.5.1 源码核对，并在内部 API 处标注 `// VERIFY@3.5.1`。
+- 当前环境已能编译 Spark/Hadoop 相关类；生产集群首次部署前仍需用目标 Spark 3.5.1 发行版做一次 `mvn -q -DskipTests package`。
+- 触及 Spark 内部 UI/API 的代码仍保留 `// VERIFY@3.5.1` 标注，升级 Spark patch 版本时需复核。
 
 ## 构建
 
@@ -113,6 +117,19 @@ bin/sparkadvisor analyze \
 
 `--advise llm` 只会发送结构化 `AnalysisResult`，不会发送 GB 级 raw event log。
 
+队列级历史报告：
+
+```bash
+bin/sparkadvisor queue-report \
+  --path hdfs:///spark2x/eventLog/application_1700000000000_0001 \
+  --format html \
+  --out ./queue-report.html \
+  --top 50 \
+  --bucket 1h
+```
+
+`queue-report` 用于分析一个完整长驻查询队列应用的一整轮 event log。`--top` 控制深度分析的最慢 SQL 数量；其它 SQL 仍进入吞吐、延迟和趋势聚合。`--bucket` 支持 `15m`、`1h`、`3600s` 等形式。
+
 ## History Server 插件
 
 插件以 Spark History Server tab 的形式接入，部署文档见 [sparkadvisor-ui-plugin/DEPLOY.md](sparkadvisor-ui-plugin/DEPLOY.md)。
@@ -126,7 +143,7 @@ $SPARK_HOME/sbin/stop-history-server.sh
 $SPARK_HOME/sbin/start-history-server.sh
 ```
 
-打开 SHS 中任意应用后，导航栏会出现 **SparkAdvisor** tab。输入 StatementID 后点击分析；留空则分析该应用中最慢的 SQL。
+打开 SHS 中任意应用后，导航栏会出现 **SparkAdvisor** tab。默认留空 StatementID 时展示该应用的队列级报告；输入 StatementID 后点击分析可下钻单条 SQL。
 
 URL 形式：
 
@@ -134,7 +151,7 @@ URL 形式：
 .../history/<appId>/sparkadvisor/?statementId=<ID>
 ```
 
-插件采用“自给自足”集成策略：`createListeners` 返回空，不干预 SHS 自身回放；tab 打开时使用 SparkAdvisor 自己的引擎懒解析 event log，并按 application 缓存结果。插件异常会被捕获并记录，不应影响应用原有 History UI。
+插件采用“自给自足”集成策略：`createListeners` 返回空，不干预 SHS 自身回放；tab 打开时使用 SparkAdvisor 自己的引擎懒解析 event log。队列报告按 event log 快照大小/修改时间异步单飞缓存，避免在 SHS UI 请求线程同步解析大日志。插件异常会被捕获并记录，不应影响应用原有 History UI。
 
 ## 报告内容
 
@@ -151,6 +168,16 @@ HTML 报告包含：
 
 示例报告见 [samples/demo-report.html](samples/demo-report.html)。
 
+队列级 HTML 报告包含：
+
+- 队列概览：应用、窗口、查询数、运行中 SQL 数、固定 core 数
+- 延迟趋势：按时间桶的查询数、P50/P95/P99 与平均利用率
+- 瓶颈聚类：慢查询 top-N 中反复出现的单 SQL 规则
+- 争用报告：争用受限占比、热点时段、资源大户
+- 慢查询榜：StatementID、executionId、耗时、主导瓶颈、争用分类
+- 全局建议：Q1-Q7 队列级规则产出的证据、置信度和覆盖范围
+- 页面底部内嵌完整 `QueueAnalysisResult` JSON
+
 ## 运行环境注意事项
 
 - CLI 约定在集群客户端节点运行，`bin/sparkadvisor` 会执行：
@@ -159,6 +186,7 @@ HTML 报告包含：
   - 使用集群 Spark/Hadoop jar 作为运行时 classpath
 - Spark 3.5.1 在 JDK 17/21 上回放日志需要若干 `--add-opens` 参数；启动脚本和 SHS 部署文档均已列出。
 - `.inprogress` 或被 compaction 的 rolling log 可能缺少尾部事件，SparkAdvisor 会标注 `incomplete=true`，相关预测置信度应按报告提示解读。
+- 队列争用是基于 task 占用率的推断，event log 不直接记录排队等待；FAIR scheduler 或多 pool 场景下应降低归因置信度。
 - AQE 开启时，有效分区数应以运行时 AQE 事件和最终计划为准；报告中的建议会区分 `shuffle.partitions`、`advisoryPartitionSizeInBytes` 与 skew join 相关参数。
 
 ## 后续可选优化

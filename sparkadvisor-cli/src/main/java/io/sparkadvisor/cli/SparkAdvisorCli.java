@@ -7,8 +7,7 @@ import picocli.CommandLine.Command;
  * Top-level CLI. Subcommands:
  * <ul>
  *   <li>{@code analyze}  — parse an event log and emit an HTML/JSON report</li>
- *   <li>{@code locate}   — list SQL executions matching a StatementID (M1.5)</li>
- *   <li>{@code metrics}  — print hard metrics as JSON (M1.5)</li>
+ *   <li>{@code queue-report} — aggregate all SQLs in a long-running queue app</li>
  * </ul>
  */
 @Command(
@@ -16,7 +15,7 @@ import picocli.CommandLine.Command;
         mixinStandardHelpOptions = true,
         version = "SparkAdvisor 0.1.0",
         description = "Analyze Spark event logs and produce tuning reports.",
-        subcommands = {AnalyzeCommand.class})
+        subcommands = {AnalyzeCommand.class, QueueReportCommand.class})
 public final class SparkAdvisorCli implements Runnable {
 
     @Override

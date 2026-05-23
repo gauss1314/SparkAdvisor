@@ -10,8 +10,8 @@ import org.apache.spark.ui.SparkUI;
 
 import java.util.logging.Logger;
 
-import scala.collection.immutable.Seq;
-import scala.jdk.javaapi.CollectionConverters;
+import scala.collection.JavaConverters;
+import scala.collection.Seq;
 
 /**
  * SparkAdvisor's History Server integration.
@@ -44,7 +44,7 @@ public final class SparkAdvisorHistoryPlugin implements AppHistoryServerPlugin {
     public Seq<SparkListener> createListeners(SparkConf conf, ElementTrackingStore store) {
         // Strategy B: we do our own parsing in setupUI; no listeners needed here.
         // VERIFY@3.5.1: return type is scala.collection.Seq[SparkListener].
-        return CollectionConverters.asScala(new java.util.ArrayList<SparkListener>()).toList();
+        return JavaConverters.asScalaBuffer(new java.util.ArrayList<SparkListener>()).toList();
     }
 
     @Override

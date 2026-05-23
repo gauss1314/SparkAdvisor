@@ -24,6 +24,10 @@
       <groupId>io.sparkadvisor</groupId>
       <artifactId>sparkadvisor-report</artifactId>
     </dependency>
+    <dependency>
+      <groupId>io.sparkadvisor</groupId>
+      <artifactId>sparkadvisor-monitor</artifactId>
+    </dependency>
 
     <!-- Spark UI / History Server APIs: provided by the SHS runtime classpath -->
     <dependency>

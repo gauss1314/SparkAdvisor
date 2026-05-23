@@ -12,7 +12,8 @@ public record Job(
         Long sqlExecutionId,
         List<Integer> stageIds,
         long submissionTime,
-        long completionTime) {
+        long completionTime,
+        boolean failed) {
 
     public long wallClockMs() {
         if (submissionTime <= 0 || completionTime <= 0) return 0;

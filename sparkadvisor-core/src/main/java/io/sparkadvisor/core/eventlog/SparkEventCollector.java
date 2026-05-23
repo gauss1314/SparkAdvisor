@@ -6,6 +6,7 @@ import io.sparkadvisor.core.model.ApplicationModel;
 import io.sparkadvisor.core.model.Job;
 import io.sparkadvisor.core.model.SqlExecution;
 import io.sparkadvisor.core.model.Stage;
+import io.sparkadvisor.core.model.TaskInterval;
 import io.sparkadvisor.core.model.TaskMetricStats;
 
 import org.apache.spark.scheduler.SparkListener;
@@ -62,6 +63,7 @@ public final class SparkEventCollector extends SparkListener {
             "org.apache.spark.sql.hive.thriftserver.SparkListenerThriftServerOperationStart";
 
     private final StatementIdExtractor statementIdExtractor = new StatementIdExtractor();
+    private final boolean collectTaskIntervals;
 
     private String appId = "";
     private String appName = "";
@@ -73,9 +75,19 @@ public final class SparkEventCollector extends SparkListener {
     private final Map<Long, SqlExecBuilder> sqlExecs = new LinkedHashMap<>();
     private final List<Job> jobs = new ArrayList<>();
     private final Map<Integer, StageBuilder> stages = new LinkedHashMap<>();
+    private final Map<Integer, Long> stageSqlExecutions = new HashMap<>();
+    private final List<TaskInterval> taskIntervals = new ArrayList<>();
 
     private final List<ExecutorEvent> executorEvents = new ArrayList<>();
     private final Map<String, Integer> executorCores = new HashMap<>(); // executorId -> cores
+
+    public SparkEventCollector() {
+        this(false);
+    }
+
+    public SparkEventCollector(boolean collectTaskIntervals) {
+        this.collectTaskIntervals = collectTaskIntervals;
+    }
 
     // ---- Application lifecycle -------------------------------------------------
 
@@ -127,9 +139,12 @@ public final class SparkEventCollector extends SparkListener {
         Long sqlId = ScalaInterop.sqlExecutionId(e.properties());
         // stageIds: Scala Seq[Object]; convert to Java List<Integer>
         List<Integer> stageIds = ScalaInterop.intSeq(e.stageIds());
-        jobs.add(new Job(e.jobId(), sqlId, stageIds, e.time(), 0L));
+        jobs.add(new Job(e.jobId(), sqlId, stageIds, e.time(), 0L, false));
         if (sqlId != null) {
             sqlExecs.computeIfAbsent(sqlId, SqlExecBuilder::new).jobIds.add((long) e.jobId());
+            for (Integer stageId : stageIds) {
+                stageSqlExecutions.putIfAbsent(stageId, sqlId);
+            }
         }
     }
 
@@ -138,8 +153,9 @@ public final class SparkEventCollector extends SparkListener {
         for (int i = 0; i < jobs.size(); i++) {
             Job j = jobs.get(i);
             if (j.jobId() == e.jobId() && j.completionTime() == 0L) {
+                boolean failed = !e.jobResult().getClass().getName().contains("JobSucceeded");
                 jobs.set(i, new Job(j.jobId(), j.sqlExecutionId(), j.stageIds(),
-                        j.submissionTime(), e.time()));
+                        j.submissionTime(), e.time(), failed));
                 break;
             }
         }
@@ -173,6 +189,19 @@ public final class SparkEventCollector extends SparkListener {
         long launch = e.taskInfo().launchTime();
         if (b.firstTaskLaunch == 0L || launch < b.firstTaskLaunch) {
             b.firstTaskLaunch = launch;
+        }
+        if (collectTaskIntervals) {
+            long finish = e.taskInfo().finishTime(); // VERIFY@3.5.1
+            if (finish > 0L && launch > 0L && finish >= launch) {
+                taskIntervals.add(new TaskInterval(
+                        e.taskInfo().taskId(),
+                        e.stageId(),
+                        e.stageAttemptId(),
+                        stageSqlExecutions.get(e.stageId()),
+                        e.taskInfo().executorId(),
+                        launch,
+                        finish));
+            }
         }
         var m = e.taskMetrics();
         if (m == null) {
@@ -257,7 +286,7 @@ public final class SparkEventCollector extends SparkListener {
         return new ApplicationModel(
                 appId, appName, appStart, appEnd, incomplete,
                 Map.copyOf(conf), List.copyOf(execList), List.copyOf(jobs), List.copyOf(stageList),
-                List.copyOf(executorEvents));
+                List.copyOf(executorEvents), List.copyOf(taskIntervals));
     }
 
     // ---- Mutable builders ------------------------------------------------------

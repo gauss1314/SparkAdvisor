@@ -29,15 +29,24 @@ public final class EventLogAnalyzer {
      * Read and parse the event log at {@code path} (single file or rolling directory).
      */
     public ApplicationModel analyze(String path) throws IOException {
+        return analyze(path, false);
+    }
+
+    /**
+     * Read and parse the event log at {@code path}, optionally retaining lightweight task
+     * intervals for queue-level contention analysis. Leave this disabled for the normal
+     * single-SQL path to preserve low memory use.
+     */
+    public ApplicationModel analyze(String path, boolean collectTaskIntervals) throws IOException {
         try (EventLogReader reader = new EventLogReader(path, hadoopConf)) {
             boolean truncated = reader.maybeTruncated();
             List<EventLogParser.EventLogPart> parts = reader.open();
             EventLogParser parser = new EventLogParser();
             if (parts.size() == 1) {
                 EventLogParser.EventLogPart p = parts.get(0);
-                return parser.parse(p.stream(), p.sourceName(), truncated);
+                return parser.parse(p.stream(), p.sourceName(), truncated, collectTaskIntervals);
             }
-            return parser.parseRolling(parts, truncated);
+            return parser.parseRolling(parts, truncated, collectTaskIntervals);
         }
     }
 }

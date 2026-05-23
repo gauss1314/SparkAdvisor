@@ -2,6 +2,8 @@ package io.sparkadvisor.ui.tab;
 
 import io.sparkadvisor.ui.render.AnalysisCoordinator;
 import io.sparkadvisor.ui.render.EventLogPathResolver;
+import io.sparkadvisor.ui.render.QueueAnalysisCoordinator;
+import io.sparkadvisor.monitor.QueueAnalyzer;
 
 import org.apache.spark.ui.SparkUI;
 import org.apache.spark.ui.WebUIPage;
@@ -10,21 +12,21 @@ import java.util.logging.Logger;
 
 import javax.servlet.http.HttpServletRequest;
 
+import scala.collection.JavaConverters;
+import scala.collection.Seq;
 import scala.xml.Node;
 import scala.xml.NodeSeq;
 import scala.xml.Unparsed;
 
 /**
  * The single page under the SparkAdvisor tab. Accepts a {@code statementId} query parameter,
- * runs the analysis pipeline via {@link AnalysisCoordinator}, and renders the report inside
- * the standard Spark UI page chrome.
+ * runs either queue-level or single-SQL analysis, and renders the report as raw tab content.
  *
  * <p>{@link WebUIPage#render} returns a {@code scala.xml.Seq[Node]}. We build our HTML as a
- * String (reusing {@code HtmlReportWriter.renderBody}) and wrap it with {@link Unparsed} so
- * Spark emits it verbatim. The page is then framed by {@code UIUtils.headerSparkPage}.
+ * String and wrap it with {@link Unparsed} so Spark emits it verbatim.
  *
- * <p>VERIFY@3.5.1: WebUIPage(prefix:String) constructor; render returns scala.xml.Seq[Node];
- * UIUtils.headerSparkPage signature. These are Spark internal UI APIs.
+ * <p>VERIFY@3.5.1: WebUIPage(prefix:String) constructor; render returns scala.xml.Seq[Node].
+ * These are Spark internal UI APIs.
  */
 public final class SparkAdvisorPage extends WebUIPage {
 
@@ -32,13 +34,16 @@ public final class SparkAdvisorPage extends WebUIPage {
 
     private final SparkUI ui;
     private final AnalysisCoordinator coordinator;
+    private final QueueAnalysisCoordinator queueCoordinator;
     private final EventLogPathResolver pathResolver;
 
     public SparkAdvisorPage(SparkAdvisorTab parent, SparkUI ui) {
         super(""); // empty prefix => page lives at /sparkadvisor
         this.ui = ui;
         // Hadoop conf inherits the SHS process environment (Kerberos ticket already present).
-        this.coordinator = new AnalysisCoordinator(new org.apache.hadoop.conf.Configuration());
+        org.apache.hadoop.conf.Configuration hadoopConf = new org.apache.hadoop.conf.Configuration();
+        this.coordinator = new AnalysisCoordinator(hadoopConf);
+        this.queueCoordinator = new QueueAnalysisCoordinator(hadoopConf);
         // VERIFY@3.5.1: SparkUI.conf() returns the SparkConf.
         this.pathResolver = new EventLogPathResolver(ui.conf());
     }
@@ -53,7 +58,14 @@ public final class SparkAdvisorPage extends WebUIPage {
         try {
             String css = coordinator.stylesheet();
             String form = searchForm(statementId);
-            String report = coordinator.renderBody(path, statementId);
+            String report;
+            if (statementId == null || statementId.isBlank()) {
+                css = css + "\n" + queueCoordinator.stylesheet();
+                report = queueCoordinator.renderBody(
+                        path, QueueAnalyzer.DEFAULT_TOP_N, QueueAnalyzer.DEFAULT_BUCKET_MS);
+            } else {
+                report = coordinator.renderBody(path, statementId);
+            }
             bodyHtml = "<style>" + css + "</style>"
                     + "<div class=\"sparkadvisor-root\">" + form + report + "</div>";
         } catch (Throwable t) {
@@ -79,9 +91,9 @@ public final class SparkAdvisorPage extends WebUIPage {
                 + "<label style=\"font-size:13px;color:#8b949e\">StatementID&nbsp;</label>"
                 + "<input type=\"text\" name=\"statementId\" value=\"" + val + "\" "
                 + "placeholder=\"e.g. 20260521_abc123\" style=\"padding:4px 8px;width:280px\"/> "
-                + "<button type=\"submit\" style=\"padding:4px 12px\">Analyze</button>"
+                + "<button type=\"submit\" style=\"padding:4px 12px\">Analyze SQL</button>"
                 + "<span style=\"margin-left:10px;color:#8b949e;font-size:12px\">"
-                + "leave blank to analyze the slowest SQL</span>"
+                + "leave blank for the queue report</span>"
                 + "</form></div>";
     }
 
@@ -105,7 +117,7 @@ public final class SparkAdvisorPage extends WebUIPage {
     private static Seq<Node> nodeSeq(Node n) {
         // VERIFY@3.5.1: building a single-element scala Seq[Node] from Java.
         return (Seq<Node>) (Seq<?>) NodeSeq.fromSeq(
-                scala.jdk.javaapi.CollectionConverters.asScala(java.util.List.of(n)).toSeq());
+                JavaConverters.asScalaBuffer(java.util.List.of(n)).toList());
     }
 
     private static String escapeAttr(String s) {

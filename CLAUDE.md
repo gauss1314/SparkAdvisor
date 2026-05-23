@@ -25,8 +25,8 @@ SparkAdvisor：以 **Java 21** 为主、面向 **Spark 3.5.1** 的 Event Log 离
 
 ## 4. 已核对的 Spark 3.5.1 关键 API（依据官方源码 v3.5.x）
 
-- `org.apache.spark.scheduler.ReplayListenerBus`：`private[spark]` 类，字节码 public，**Java 可 `new`**。核心方法
-  `void replay(InputStream logData, String sourceName, boolean maybeTruncated)`（第三参可省，默认 false）。内部用 `JsonProtocol.sparkEventFromJson` 逐行还原事件。每行一个 JSON 事件。
+- `org.apache.spark.scheduler.ReplayListenerBus`：`private[spark]` 类，字节码 public，**Java 可 `new`**。Spark 3.5.1 字节码暴露的核心方法是
+  `boolean replay(InputStream logData, String sourceName, boolean maybeTruncated, scala.Function1<String,Object> eventsFilter)`；Java 调用时传 `ReplayListenerBus.SELECT_ALL_FILTER()`。内部用 `JsonProtocol.sparkEventFromJson` 逐行还原事件。每行一个 JSON 事件。
 - `org.apache.spark.scheduler.SparkListener`：抽象类，Java 直接 `extends` 并 override：
   `onJobStart/onJobEnd/onStageSubmitted/onStageCompleted/onTaskEnd/onEnvironmentUpdate/onExecutorAdded/onExecutorRemoved/onApplicationStart/onApplicationEnd/onOtherEvent(SparkListenerEvent)`。
 - **SQL 事件**在 `org.apache.spark.sql.execution.ui` 包，**不在 SparkListener 的具名回调里**，统一从 `onOtherEvent` 接收并按类型分发：
@@ -36,7 +36,7 @@ SparkAdvisor：以 **Java 21** 为主、面向 **Spark 3.5.1** 的 Event Log 离
 - **Thrift Server 事件**（可选，STS 才有）在 `org.apache.spark.sql.hive.thriftserver` 包：
   `SparkListenerThriftServerOperationStart`，字段含 `id:String`、`statement:String`（**SQL 原文，含 `/* StatementID */`**）、`sessionId`、`startTime`。**用类名字符串匹配处理，缺失不报错**（避免硬依赖 hive-thriftserver jar）。
 - `JsonProtocol.sparkEventFromJson(String)` 在 `org.apache.spark.util` 包，`private[spark]`；优先**不直接调用**，让 replay 内部用它。仅在需要单行调试时反射调用并标 `// VERIFY@3.5.1`。
-- Scala 互操作：事件里的集合是 `scala.collection.Map/Seq`、可空值是 `scala.Option`。**一律在 `core` 内转成 Java 类型**（`scala.jdk.javaapi.CollectionConverters` / `OptionConverters`），上层模块只见 Java 类型。`TaskMetrics`/`TaskInfo`/`StageInfo` 的 getter 在 Java 中以方法形式访问。
+- Scala 互操作：Spark 3.5.1 使用 Scala 2.12，事件里的集合是 `scala.collection.Map/Seq`、可空值是 `scala.Option`。**一律在 `core` 内转成 Java 类型**（用 `scala.collection.JavaConverters`；不要用 Scala 2.13 的 `scala.jdk.javaapi`），上层模块只见 Java 类型。`TaskMetrics`/`TaskInfo`/`StageInfo` 的 getter 在 Java 中以方法形式访问。
 - **JDK 17/21 反射封装**：Spark 3.5 在 JDK 17/21 上回放需放开模块封装，运行时加 `--add-opens=java.base/...`（见 `bin/sparkadvisor` 与设计文档 §10.1）。缺失会抛 `InaccessibleObjectException`。
 - **History Server 扩展点（M3）**：`org.apache.spark.status.AppHistoryServerPlugin` 是官方接口，SHS 通过 `ServiceLoader`（`META-INF/services/org.apache.spark.status.AppHistoryServerPlugin`）自动发现——**零侵入，jar 入 classpath 即可**，与 Spark SQL 自己的 tab 同机制。三个方法：`Seq<SparkListener> createListeners(SparkConf, ElementTrackingStore)`、`int displayOrder()`、`void setupUI(SparkUI)`。SQL tab 的 `SQLHistoryServerPlugin.setupUI` 即从 `ui.store` 建 `SQLTab().attachTab()`。
 - **SparkAdvisor 采用"自给自足"集成（策略 B）**：`createListeners` 返回空（不干预 SHS 回放），`setupUI` 用我们自己的 `EventLogAnalyzer` 重解析建 tab。复用全部已验证栈、与 SHS store 解耦；日志懒解析（点开 tab 才解析）并按 app 缓存。

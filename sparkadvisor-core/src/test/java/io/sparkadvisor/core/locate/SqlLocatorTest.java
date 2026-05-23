@@ -19,7 +19,7 @@ class SqlLocatorTest {
 
     private static ApplicationModel appWith(SqlExecution... execs) {
         return new ApplicationModel("app-1", "test", 0, 0, false,
-                Map.of(), List.of(execs), List.of(), List.of(), List.of());
+                Map.of(), List.of(execs), List.of(), List.of(), List.of(), List.of());
     }
 
     @Test

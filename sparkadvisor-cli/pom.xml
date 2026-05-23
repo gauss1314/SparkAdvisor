@@ -28,6 +28,10 @@
       <artifactId>sparkadvisor-advisor</artifactId>
     </dependency>
     <dependency>
+      <groupId>io.sparkadvisor</groupId>
+      <artifactId>sparkadvisor-monitor</artifactId>
+    </dependency>
+    <dependency>
       <groupId>info.picocli</groupId>
       <artifactId>picocli</artifactId>
     </dependency>

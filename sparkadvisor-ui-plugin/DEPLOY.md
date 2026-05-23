@@ -13,7 +13,7 @@ On a host with Maven Central access:
 mvn -q -DskipTests -pl sparkadvisor-ui-plugin -am package
 ```
 
-Produces a fat-jar (our engine + jackson + t-digest; Spark/Hadoop stay `provided`):
+Produces a fat-jar (our engine + monitor + jackson + t-digest; Spark/Hadoop stay `provided`):
 
 ```
 sparkadvisor-ui-plugin/target/sparkadvisor-ui-plugin.jar
@@ -71,11 +71,14 @@ $SPARK_HOME/sbin/start-history-server.sh
 Open any application in the SHS UI. A new **SparkAdvisor** tab appears in the nav bar (after
 the built-in Jobs/Stages/.../SQL tabs). On the tab:
 
-- Enter a **StatementID** (from the leading `/* StatementID */` comment) and click *Analyze*.
-- Leave it blank to analyze the application's slowest SQL.
+- Leave **StatementID** blank to show the queue-level report for this application. For large
+  logs the page schedules analysis in a bounded background pool and asks you to refresh later;
+  completed results are cached by event-log snapshot size/modification time.
+- Enter a **StatementID** (from the leading `/* StatementID */` comment) and click *Analyze SQL*
+  to drill into the single-SQL report.
 
-The tab re-parses the application's event log with SparkAdvisor's own engine and renders the
-full report (hard metrics, critical path, findings, predictions) inline.
+The tab re-parses the application's event log with SparkAdvisor's own engine and renders either
+the queue-level report or the single-SQL report inline.
 
 URL form: `.../history/<appId>/sparkadvisor/?statementId=<ID>`
 
@@ -85,7 +88,13 @@ URL form: `.../history/<appId>/sparkadvisor/?statementId=<ID>`
   empty — it does not piggy-back on the SHS's internal `AppStatusStore`. Instead `setupUI`
   attaches a tab that re-parses the event log with SparkAdvisor's own pipeline. This reuses
   the fully-tested core/analyzer/predictor/report stack and stays decoupled from SHS
-  internals. The log is parsed lazily (only when you open the tab) and cached per application.
+  internals. The log is parsed lazily (only when you open the tab).
+- **Queue mode**: empty `statementId` renders `QueueAnalysisResult` using `sparkadvisor-monitor`.
+  The queue parse enables lightweight task intervals for contention analysis and runs
+  asynchronously with single-flight caching so a 10 GB `.inprogress` log does not block the SHS
+  UI request thread.
+- **SQL drilldown**: non-empty `statementId` keeps the original single-SQL `AnalysisResult`
+  path and renders the normal report body.
 - **Robustness**: a failure inside the plugin is caught and logged; it never breaks the rest
   of the History UI for an application.
 
@@ -98,3 +107,5 @@ URL form: `.../history/<appId>/sparkadvisor/?statementId=<ID>`
   call `UIUtils.headerSparkPage` (its signature is the most version-brittle internal API). The
   body therefore appears without Spark's standard page header frame — an accepted tradeoff for
   robustness. See the note in `SparkAdvisorPage.render`.
+- Queue contention is inferred from task occupancy. Event logs do not directly record scheduler
+  wait time, and FAIR scheduler / multi-pool attribution can reduce confidence.

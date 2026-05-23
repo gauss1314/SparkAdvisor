@@ -17,6 +17,7 @@
     <module>sparkadvisor-predictor</module>
     <module>sparkadvisor-report</module>
     <module>sparkadvisor-advisor</module>
+    <module>sparkadvisor-monitor</module>
     <module>sparkadvisor-cli</module>
     <module>sparkadvisor-ui-plugin</module>
   </modules>
@@ -108,6 +109,11 @@
       <dependency>
         <groupId>io.sparkadvisor</groupId>
         <artifactId>sparkadvisor-advisor</artifactId>
+        <version>${project.version}</version>
+      </dependency>
+      <dependency>
+        <groupId>io.sparkadvisor</groupId>
+        <artifactId>sparkadvisor-monitor</artifactId>
         <version>${project.version}</version>
       </dependency>
 

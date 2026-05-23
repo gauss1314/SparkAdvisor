@@ -32,14 +32,14 @@ final class ScalaInterop {
     static Map<String, String> sparkProperties(SparkListenerEnvironmentUpdate e) {
         Map<String, String> out = new LinkedHashMap<>();
         // VERIFY@3.5.1: key name is "Spark Properties" in JsonProtocol.
-        scala.collection.immutable.Map<String, scala.collection.Seq<scala.Tuple2<String, String>>> details =
+        scala.collection.Map<String, scala.collection.Seq<scala.Tuple2<String, String>>> details =
                 e.environmentDetails();
         scala.Option<scala.collection.Seq<scala.Tuple2<String, String>>> opt =
                 details.get("Spark Properties");
         if (opt.isDefined()) {
             scala.collection.Seq<scala.Tuple2<String, String>> seq = opt.get();
             List<scala.Tuple2<String, String>> javaList =
-                    scala.jdk.javaapi.CollectionConverters.asJava(seq);
+                    scala.collection.JavaConverters.seqAsJavaList(seq);
             for (scala.Tuple2<String, String> kv : javaList) {
                 out.put(kv._1(), kv._2());
             }
@@ -63,7 +63,7 @@ final class ScalaInterop {
     static List<Integer> intSeq(scala.collection.Seq<Object> seq) {
         List<Integer> out = new ArrayList<>();
         if (seq == null) return out;
-        for (Object o : scala.jdk.javaapi.CollectionConverters.asJava(seq)) {
+        for (Object o : scala.collection.JavaConverters.seqAsJavaList(seq)) {
             out.add(((Number) o).intValue());
         }
         return out;

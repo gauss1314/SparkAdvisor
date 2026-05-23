@@ -1,71 +1,169 @@
 # SparkAdvisor
 
-Java 21 offline analyzer and tuning advisor for **Apache Spark 3.5.1** event logs.
+SparkAdvisor 是一个以 **Java 21** 实现、面向 **Apache Spark 3.5.1** 的 Event Log 离线分析与调优顾问。它读取 HDFS 上归档的 Spark event log，复用 Spark 自带的 `ReplayListenerBus` / `JsonProtocol` 还原事件，计算关键路径与硬指标，基于规则和成本模型给出调优建议，并输出自包含 HTML 或 JSON 报告。
 
-Reads archived event logs from HDFS, replays them through Spark's own
-`ReplayListenerBus` / `JsonProtocol` (the same machinery the History Server uses),
-computes the critical path and hard performance metrics, and produces a report.
-SQL statements are located by the **StatementID** carried in the leading
-`/* StatementID */` comment of the SQL text.
+完整设计见 [SparkAdvisor-design.md](SparkAdvisor-design.md)，仓库协作与实现约束见 [AGENTS.md](AGENTS.md)。
 
-See `SparkAdvisor-design.md` for the full design and `CLAUDE.md` for contributor rules.
+## 核心能力
 
-## Status (feature-complete: M1–M3 + F4)
+- **离线解析 event log**：支持单文件、rolling event log 目录、压缩日志与 `.inprogress` 不完整日志。
+- **StatementID 定位 SQL**：通过 SQL 开头的 `/* StatementID */` 注释定位目标语句；若输入纯数字且没有 StatementID 命中，则回退按 `executionId` 定位。
+- **硬指标分析**：计算关键路径、理想耗时、实际墙钟、核心利用率、倾斜比、spill 比例、GC 占比、调度延迟等实测指标。
+- **规则诊断**：内置 8 条 AQE 感知规则，覆盖数据倾斜、spill、并发不足、过度并行、小文件、GC、broadcast join 机会与调度等待。
+- **调参预测**：对 shuffle partition 与 executor/core 伸缩做成本模型估计，输出假设、置信度和可能反转条件；倾斜场景会明确提示“调分区通常无效”。
+- **Advisor 建议**：默认使用离线确定性的 `RuleBasedAdvisor`；可通过 `--advise llm` 调用 LLM Advisor。LLM 只消费结构化 `AnalysisResult` JSON，绝不发送原始 event log。
+- **History Server 集成**：提供 Spark History Server tab 插件，通过 `AppHistoryServerPlugin` / `ServiceLoader` 接入，点开 tab 后按需重解析日志并缓存结果。
 
-Implemented and **verified at runtime** (compiled with JDK 21; Spark-free layers run real tests,
-and all offline-checkable committed JUnit tests compile against the product classes):
-- **core**: StatementID extraction/locate, incremental quantiles, `MetricAggregator`
-  (critical path / ideal time / utilization), `CoreTimeline` (accurate cores from
-  ExecutorAdded/Removed, with config fallback)
-- **analyzer**: `RuleEngine` + 8 AQE-aware rules (R1 skew, R2 spill, R3 low-parallelism,
-  R4 over-parallelism, R5 small-files, R6 GC, R7 broadcast, R8 scheduling)
-- **predictor**: shuffle-partition cost model (skew/AQE-aware) + executor-scaling simulation;
-  every prediction carries confidence + assumptions
-- **report**: `AnalysisResult` contract + JSON + self-contained HTML (render / renderBody / stylesheet)
-- **advisor (F4)**: `RuleBasedAdvisor` (default, offline) + `LlmAdvisor` (Anthropic provider via
-  JDK HttpClient). **Both consume the structured `AnalysisResult`, never the raw log** — the
-  deterministic layers parse and do arithmetic; the LLM only interprets. Graceful fallback on
-  any LLM error.
-- **ui-plugin (M3)**: History Server tab via `AppHistoryServerPlugin` (ServiceLoader)
+## 架构原则
 
-Pending first compile on a Maven-enabled host (depend on provided Spark/Hadoop; signatures
-checked against Spark 3.5.1 source/JavaDoc, marked `// VERIFY@3.5.1`): core eventlog layer,
-`sparkadvisor-cli`, and ui-plugin's Spark-UI-coupled classes.
+SparkAdvisor 的唯一数据契约是 `AnalysisResult` JSON。CLI、HTML 报告、History Server tab 和 Advisor 都只消费这一契约，不绕过它直接读取领域模型。
 
-```bash
-bin/sparkadvisor analyze --path hdfs:///.../application_xxx \
-  --statement-id 20260521_abc123 --advise rule --format html --out report.html
-# --advise llm  (needs ANTHROPIC_API_KEY) sends the structured analysis (not the log) to an LLM
+```text
+HDFS Event Log
+  -> sparkadvisor-core      读取、回放、领域模型、StatementID 定位、指标聚合与关键路径
+  -> sparkadvisor-analyzer  RuleEngine，产出 Finding 与 Recommendation
+  -> sparkadvisor-predictor shuffle/executor 成本模型预测
+  -> sparkadvisor-report    AnalysisResult JSON 与自包含 HTML 渲染
+  -> sparkadvisor-advisor   RuleBasedAdvisor / LlmAdvisor
+  -> sparkadvisor-cli       命令行入口
+  -> sparkadvisor-ui-plugin Spark History Server tab
 ```
 
-See `samples/demo-report.html` for a generated report (5 findings + 9 consolidated
-recommendations) and `sparkadvisor-ui-plugin/DEPLOY.md` for History Server installation.
+关键约束：
 
-Optional future work: multi-point regression for the cost model; precise per-task memory
-budget; `UIUtils.headerSparkPage` framing; a local-model LLM provider.
+- 源码使用 Java 21；不使用 Scala 编写源码。
+- Spark/Hadoop 依赖全部是 `provided`，不会打进 CLI 或插件 fat-jar；运行时由集群 `/opt/client` 环境提供 classpath。
+- 事件解析不手写 Spark event schema，统一复用 Spark 的回放机制，降低跨小版本字段演化风险。
+- 解析必须流式、低内存；task 指标在 `onTaskEnd` 增量进入分位数估计器，默认不保留全部原始 task。
+- HTML 报告是单文件自包含输出，内联 CSS/SVG/JSON，不引入前端构建链。
 
-## Build
+## 当前状态
 
-> Requires a host with access to Maven Central (this dev sandbox does not have it).
+项目已完成 M1-M3 与 F4 功能：
+
+- **M1**：父 POM、`core/report/cli`、领域模型、分位数估计器、StatementID 提取与定位、event log reader/parser、`MetricAggregator`、`AnalysisResult`、HTML/JSON 报告、CLI `analyze` 端到端。
+- **M2**：`sparkadvisor-analyzer` 规则引擎与 `sparkadvisor-predictor` 成本模型预测；报告新增 Predictions 区域。
+- **M3**：History Server tab 插件已实现，采用自给自足策略重解析 event log，不依赖 SHS 内部 store。
+- **F4**：`TuningAdvisor`、`RuleBasedAdvisor`、`LlmAdvisor`、`AnthropicLlmProvider`、prompt 构造与 LLM JSON 响应解析已实现；LLM 失败时优雅降级。
+
+已验证项：
+
+- 纯 Java 层（core + analyzer + predictor + report）已用 JDK 21 真编译通过。
+- analyzer、predictor、advisor、CoreTimeline、规则负例、LLM JSON 解析与端到端报告渲染相关测试已通过。
+- 所有纯 Java 模块提交版 JUnit 测试已对产品类编译通过。
+
+仍需在可访问 Maven Central 的机器上首编验证：
+
+- 触及 Spark/Hadoop 的 eventlog 层、CLI、ui-plugin 中使用 Spark 内部 API 的类。
+- 相关代码已按 Spark 3.5.1 源码核对，并在内部 API 处标注 `// VERIFY@3.5.1`。
+
+## 构建
+
+本开发沙箱无法访问 Maven Central，因此不能在这里首次下载 Spark/Hadoop 依赖并完成 Maven 编译。请在可访问 Maven Central 的主机上构建：
 
 ```bash
-mvn -q -DskipTests package      # build
-mvn -q test                     # run unit tests
+mvn -q -DskipTests package
+mvn -q test
 ```
 
-The CLI fat-jar lands at `sparkadvisor-cli/target/sparkadvisor-cli.jar`
-(Spark/Hadoop are `provided`, not bundled).
+构建产物：
 
-## Run
+- CLI jar：`sparkadvisor-cli/target/sparkadvisor-cli.jar`
+- History Server 插件 jar：`sparkadvisor-ui-plugin/target/sparkadvisor-ui-plugin.jar`
 
-On a cluster client node, as root (the launcher does `source bigdata_env` + `kinit`
-and adds the JDK 21 module-open flags Spark needs):
+Spark/Hadoop 依赖为 `provided`，运行时必须从集群 Spark/Hadoop classpath 提供。
+
+## CLI 使用
+
+在集群客户端节点上运行。推荐使用仓库内的启动脚本，它会加载集群环境、执行固定 Kerberos 初始化，并添加 Spark 3.5.1 在 JDK 17/21 上回放 event log 所需的 `--add-opens` 参数：
 
 ```bash
 bin/sparkadvisor analyze \
   --path hdfs:///spark2x/eventLog/application_1700000000000_0001 \
   --statement-id 20260521_abc123 \
-  --format html --out ./report.html
+  --advise rule \
+  --format html \
+  --out ./report.html
 ```
 
-Omit `--statement-id` to analyze the slowest `--top N` SQLs.
+常用参数：
+
+| 参数 | 说明 |
+| --- | --- |
+| `--path` | HDFS event log 路径，支持单文件或 rolling 目录。 |
+| `--statement-id` | SQL 开头 `/* StatementID */` 中的 ID；纯数字可回退按 `executionId` 查找。 |
+| `--format html\|json` | 输出格式，默认 `html`。 |
+| `--out` | 输出文件路径，默认 `report.<format>`。 |
+| `--top` | 未指定 StatementID 时，选择最慢的 N 条 SQL，当前 CLI 取其中最慢一条生成报告。 |
+| `--keep-raw` | 调试用，保留原始 task 记录，会显著增加内存占用。 |
+| `--hadoop-conf-dir` | 覆盖环境变量中的 Hadoop 配置目录。 |
+| `--advise none\|rule\|llm` | Advisor 模式，默认 `rule`；`llm` 需要 `ANTHROPIC_API_KEY`。 |
+
+LLM 模式示例：
+
+```bash
+export ANTHROPIC_API_KEY=...
+bin/sparkadvisor analyze \
+  --path hdfs:///spark2x/eventLog/application_1700000000000_0001 \
+  --statement-id 20260521_abc123 \
+  --advise llm \
+  --format html \
+  --out ./report-llm.html
+```
+
+`--advise llm` 只会发送结构化 `AnalysisResult`，不会发送 GB 级 raw event log。
+
+## History Server 插件
+
+插件以 Spark History Server tab 的形式接入，部署文档见 [sparkadvisor-ui-plugin/DEPLOY.md](sparkadvisor-ui-plugin/DEPLOY.md)。
+
+基本流程：
+
+```bash
+mvn -q -DskipTests -pl sparkadvisor-ui-plugin -am package
+cp sparkadvisor-ui-plugin/target/sparkadvisor-ui-plugin.jar "$SPARK_HOME/jars/"
+$SPARK_HOME/sbin/stop-history-server.sh
+$SPARK_HOME/sbin/start-history-server.sh
+```
+
+打开 SHS 中任意应用后，导航栏会出现 **SparkAdvisor** tab。输入 StatementID 后点击分析；留空则分析该应用中最慢的 SQL。
+
+URL 形式：
+
+```text
+.../history/<appId>/sparkadvisor/?statementId=<ID>
+```
+
+插件采用“自给自足”集成策略：`createListeners` 返回空，不干预 SHS 自身回放；tab 打开时使用 SparkAdvisor 自己的引擎懒解析 event log，并按 application 缓存结果。插件异常会被捕获并记录，不应影响应用原有 History UI。
+
+## 报告内容
+
+HTML 报告包含：
+
+- 应用概览与目标 SQL 概览
+- 关键路径图：理想耗时、关键路径、实际墙钟三线对比
+- 硬指标面板：倾斜、利用率、偏离度、spill、GC 等
+- Findings：按严重程度排序的规则诊断
+- Predictions：shuffle partition 与 executor/core 伸缩曲线
+- Recommendations：SQL 改写与 Spark 配置建议
+- Advisor 输出：规则版或 LLM 版摘要与建议
+- 页面底部内嵌完整 `AnalysisResult` JSON
+
+示例报告见 [samples/demo-report.html](samples/demo-report.html)。
+
+## 运行环境注意事项
+
+- CLI 约定在集群客户端节点运行，`bin/sparkadvisor` 会执行：
+  - `source /opt/client/bigdata_env`
+  - `kinit -kt /opt/client/keytab/ossuser.keytab ossuser`
+  - 使用集群 Spark/Hadoop jar 作为运行时 classpath
+- Spark 3.5.1 在 JDK 17/21 上回放日志需要若干 `--add-opens` 参数；启动脚本和 SHS 部署文档均已列出。
+- `.inprogress` 或被 compaction 的 rolling log 可能缺少尾部事件，SparkAdvisor 会标注 `incomplete=true`，相关预测置信度应按报告提示解读。
+- AQE 开启时，有效分区数应以运行时 AQE 事件和最终计划为准；报告中的建议会区分 `shuffle.partitions`、`advisoryPartitionSizeInBytes` 与 skew join 相关参数。
+
+## 后续可选优化
+
+- predictor 对成本模型参数 `o` / `r` 做多点回归拟合。
+- per-task 内存预算结合 `spark.memory.fraction` 做更精细估算。
+- ui-plugin 对 `UIUtils.headerSparkPage` 做版本判断后接入 Spark 标准页头。
+- 增加本地模型 LLM provider。

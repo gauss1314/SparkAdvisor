@@ -58,7 +58,7 @@ public final class AnalyzeCommand implements Callable<Integer> {
 
     @Option(names = "--advise", defaultValue = "rule",
             description = "Tuning advisor: none | rule | llm. Default: rule (offline). "
-                    + "'llm' calls an LLM (needs ANTHROPIC_API_KEY) and consumes the structured "
+                    + "'llm' calls MiniMax-M2.5 (needs MINIMAX_API_KEY) and consumes the structured "
                     + "analysis, never the raw log.")
     String advise;
 
@@ -120,4 +120,3 @@ public final class AnalyzeCommand implements Callable<Integer> {
                 .orElse(null);
     }
 }
-

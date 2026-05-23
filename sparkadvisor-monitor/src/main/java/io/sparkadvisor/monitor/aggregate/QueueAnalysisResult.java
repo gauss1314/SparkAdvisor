@@ -27,6 +27,11 @@ public record QueueAnalysisResult(
                 contention, topSlowQueries, recommendations, aiAdvice, meta);
     }
 
+    public QueueAnalysisResult withAiAdvice(AnalysisResult.AiAdvice advice) {
+        return new QueueAnalysisResult(summary, timeline, bottlenecks, utilization, resources,
+                contention, topSlowQueries, globalRecommendations, advice, meta);
+    }
+
     public record QueueSummary(
             String appId,
             String appName,

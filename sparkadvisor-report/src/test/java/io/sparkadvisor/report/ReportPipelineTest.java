@@ -77,6 +77,15 @@ class ReportPipelineTest {
     }
 
     @Test
+    void rendersChineseHtml() throws Exception {
+        AnalysisResult r = new AnalysisResultBuilder(demoApp(), "hdfs:///demo").build(demoApp().sqlExecutions().get(0));
+        String html = new HtmlReportWriter().render(r, true);
+        assertTrue(html.contains("lang=\"zh-CN\""));
+        assertTrue(html.contains("应用概览"));
+        assertTrue(html.contains("关键路径与优化空间"));
+    }
+
+    @Test
     void jsonContractSerializes() throws Exception {
         AnalysisResult r = new AnalysisResultBuilder(demoApp(), "hdfs:///demo").build(demoApp().sqlExecutions().get(0));
         String json = new JsonReportWriter().toJson(r);

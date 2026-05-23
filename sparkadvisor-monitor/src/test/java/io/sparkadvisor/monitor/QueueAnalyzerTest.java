@@ -8,6 +8,7 @@ import io.sparkadvisor.core.model.SqlExecution;
 import io.sparkadvisor.core.model.Stage;
 import io.sparkadvisor.core.model.TaskInterval;
 import io.sparkadvisor.core.model.TaskMetricStats;
+import io.sparkadvisor.monitor.advisor.QueueLlmAdvisor;
 import io.sparkadvisor.monitor.render.QueueHtmlWriter;
 import io.sparkadvisor.monitor.render.QueueJsonWriter;
 import org.junit.jupiter.api.Test;
@@ -101,9 +102,38 @@ class QueueAnalyzerTest {
         assertTrue(html.startsWith("<!DOCTYPE html>"));
         assertTrue(html.contains("SparkAdvisor Queue"));
         assertTrue(html.contains("Global recommendations"));
+        assertTrue(html.contains("<svg class=\"chart\""), "timeline chart should be inline SVG");
+        assertTrue(html.contains("?statementId=big"), "slow-query rows should link to drilldown");
         assertTrue(json.contains("\"summary\""));
         assertTrue(json.contains("\"resources\""));
         assertTrue(json.contains("\"bottlenecks\""));
         assertNotNull(result.meta().assumptions());
+    }
+
+    @Test
+    void rendersChineseQueueReport() throws Exception {
+        var result = new QueueAnalyzer().analyze(queueApp(), "synthetic", 2, 10_000L);
+        String html = new QueueHtmlWriter().render(result, true);
+        assertTrue(html.contains("lang=\"zh-CN\""));
+        assertTrue(html.contains("队列概览"));
+        assertTrue(html.contains("全局调参建议"));
+    }
+
+    @Test
+    void queueLlmAdvisorParsesStructuredAdvice() {
+        var result = new QueueAnalyzer().analyze(queueApp(), "synthetic", 2, 10_000L);
+        var advisor = new QueueLlmAdvisor(new io.sparkadvisor.advisor.llm.LlmProvider() {
+            public String name() { return "llm:test"; }
+            public String complete(String systemPrompt, String userPrompt) {
+                assertTrue(userPrompt.contains("\"topSlowQueries\""));
+                return "{\"summary\":\"Queue is contention-limited.\",\"recommendations\":["
+                        + "{\"type\":\"SPARK_CONF\",\"action\":\"increase executor pool\","
+                        + "\"rationale\":\"high contention\",\"expectedImpact\":\"medium\"}]}";
+            }
+        });
+        var advice = advisor.advise(result);
+        var withAdvice = result.withAiAdvice(advice);
+        assertEquals("llm:test", withAdvice.aiAdvice().provider());
+        assertEquals(1, withAdvice.aiAdvice().recommendations().size());
     }
 }

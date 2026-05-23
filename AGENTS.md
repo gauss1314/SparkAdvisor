@@ -89,16 +89,16 @@ sparkadvisor-ui-plugin History Server tab（AppHistoryServerPlugin/ServiceLoader
 **全部剩余任务已完成**：
 - **core 增强**：`StageAnalysis` 加 input 字节/per-task input 中位数；新增 `ExecutorEvent` + `CoreTimeline`（从 ExecutorAdded/Removed 重建精确 core 时间线，积分 core-ms 算利用率，无事件时回退配置值）；`SqlAnalysis` 加 `physicalPlanText`；`SparkEventCollector` 抽 executor 事件。
 - **规则补全**：R4 过并行小任务、R5 小文件（仅在有 input 字节的 scan stage 触发，shuffle stage 不误报）、R7 broadcast 机会（物理计划启发式：有 SMJ 且无 BroadcastJoin 才报，INFO + 明确 caveat）。RuleEngine 现 8 条规则。
-- **F4 advisor 模块**：`TuningAdvisor` 接口 + `RuleBasedAdvisor`（确定性、离线、默认）+ `LlmAdvisor`（`LlmProvider` 接口 + `AnthropicLlmProvider` 用 JDK21 HttpClient + `PromptBuilder` + `AdviceResponseParser`）。**核心原则落地**：喂模型的是结构化 `AnalysisResult` JSON，绝非 raw log；`PromptBuilder` 注释明确这点。LLM 失败优雅降级不抛异常。CLI 加 `--advise none|rule|llm`。`AnalysisResult.withAiAdvice()` 注入建议，HTML 渲染 provider+summary+建议。
+- **F4 advisor 模块**：`TuningAdvisor` 接口 + `RuleBasedAdvisor`（确定性、离线、默认）+ `LlmAdvisor`（`LlmProvider` 接口 + `MinimaxLlmProvider` 默认 MiniMax-M2.5，`AnthropicLlmProvider` 可选 + `PromptBuilder` + `AdviceResponseParser`）。**核心原则落地**：喂模型的是结构化 `AnalysisResult`/`QueueAnalysisResult` JSON，绝非 raw log；`PromptBuilder`/`QueuePromptBuilder` 注释明确这点。LLM 失败优雅降级不抛异常。CLI 加 `--advise none|rule|llm`，`queue-report --advise none|llm`。`AnalysisResult.withAiAdvice()`/`QueueAnalysisResult.withAiAdvice()` 注入建议，HTML 渲染 provider+summary+建议。
 
 **验证状态（JDK 21 真编译 + 行为测试）**：CoreTimeline 积分（含动态分配/部分窗口）、R4/R5/R7（含负例）、RuleBasedAdvisor 端到端叙述、extractJson 去 fence/prose、LLM JSON 解析与降级、路径解析——全 PASS。所有纯 Java 模块的**提交版 JUnit 测试**已对产品类编译通过（含修了一个 `extractJson` 可见性的真 bug）。Jackson 用法用 API stub 类型核对通过。仍待 Maven 环境首编：core eventlog 层、CLI、ui-plugin 触及 Spark 的类（VERIFY@3.5.1）。
 
-**项目已功能完整（M1–M3 + F4）。** 后续可选优化：predictor 多点回归拟合 `o`/`r`；per-task 内存预算用 `spark.memory.fraction` 精算；ui-plugin 接入 `UIUtils.headerSparkPage`（带版本判断）；本地 LLM provider。
+**项目已功能完整（M1–M3 + F4 + Q-M4）。** 后续可选优化：predictor 多点回归拟合 `o`/`r`；per-task 内存预算用 `spark.memory.fraction` 精算；ui-plugin 接入 `UIUtils.headerSparkPage`（带版本判断）；本地 LLM provider。
 
 ## 9. 报告模块要点（M1 已实现，改动须遵守）
 
 - **`AnalysisResult` 是唯一契约**，且**不得引入任何 Spark 类型**（保证可 JSON 序列化、report 模块与 core 的 provided Spark 依赖解耦）。core 的 `analyze` 包（`SqlAnalysis`/`StageAnalysis`/`MetricAggregator`）也是纯 Java。
-- HTML 渲染是**单文件自包含**：内联 CSS、内联 SVG（关键路径三线条）、底部内嵌完整 JSON。**不引前端构建链、不用 localStorage**。
+- HTML 渲染是**单文件自包含**：内联 CSS、内联 SVG（关键路径三线条/队列趋势图）、底部内嵌完整 JSON。**不引前端构建链、不用 localStorage**。输出文件名包含 `_zh` 时生成中文报告，否则生成英文报告。
 - 阈值常量 M1 暂放在 `HtmlReportWriter`（SKEW_WARN=5、GC_WARN=0.10、UTIL_LOW=0.40）；M2 RuleEngine 落地时把权威阈值集中到 analyzer 配置类，HTML 只读不再自带。
 
 ## 10. 常用命令

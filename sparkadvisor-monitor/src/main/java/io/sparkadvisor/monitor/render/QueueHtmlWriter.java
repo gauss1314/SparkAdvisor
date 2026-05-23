@@ -5,6 +5,8 @@ import io.sparkadvisor.monitor.aggregate.QueueAnalysisResult;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.function.ToLongFunction;
 
 /**
  * Self-contained HTML renderer for queue-level reports.
@@ -14,37 +16,59 @@ public final class QueueHtmlWriter {
     private final QueueJsonWriter jsonWriter = new QueueJsonWriter();
 
     public void write(QueueAnalysisResult result, Path out) throws IOException {
-        Files.writeString(out, render(result));
+        Files.writeString(out, render(result, isChineseOutput(out)));
     }
 
     public String render(QueueAnalysisResult r) throws IOException {
-        return "<!DOCTYPE html>\n<html lang=\"en\"><head><meta charset=\"utf-8\">"
+        return render(r, false);
+    }
+
+    public String render(QueueAnalysisResult r, boolean zh) throws IOException {
+        return "<!DOCTYPE html>\n<html lang=\"" + (zh ? "zh-CN" : "en")
+                + "\"><head><meta charset=\"utf-8\">"
                 + "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
-                + "<title>SparkAdvisor Queue Report</title><style>" + stylesheet() + "</style>"
-                + "</head><body>" + renderBody(r) + "</body></html>";
+                + "<title>" + t(zh, "SparkAdvisor Queue Report", "SparkAdvisor 队列报告")
+                + "</title><style>" + stylesheet() + "</style>"
+                + "</head><body>" + renderBody(r, zh) + "</body></html>";
     }
 
     public String renderBody(QueueAnalysisResult r) throws IOException {
+        return renderBody(r, false);
+    }
+
+    public String renderBody(QueueAnalysisResult r, boolean zh) throws IOException {
         StringBuilder h = new StringBuilder(16_384);
-        h.append("<header><h1>SparkAdvisor Queue</h1><div class=\"sub\">")
+        h.append("<header><h1>")
+                .append(t(zh, "SparkAdvisor Queue", "SparkAdvisor 队列"))
+                .append("</h1><div class=\"sub\">")
                 .append(esc(r.meta().generatedAt())).append(" &middot; v")
                 .append(esc(r.meta().sparkAdvisorVersion())).append("</div></header>");
         if (r.meta().runningSnapshot()) {
-            h.append("<div class=\"banner warn\">Running snapshot; ")
+            h.append("<div class=\"banner warn\">")
+                    .append(t(zh, "Running snapshot @ ", "运行中快照 @ "))
+                    .append(esc(clockTime(r.meta().generatedAt())))
+                    .append(t(zh, "; ", "，含 "))
                     .append(r.summary().runningQueries())
-                    .append(" SQL execution(s) are still open and are excluded from completed-query statistics.</div>");
+                    .append(t(zh,
+                            " SQL execution(s) are still open and are excluded from completed-query statistics.",
+                            " 条未完成查询；这些查询不会混入已完成查询统计。"))
+                    .append("</div>");
         }
         if (r.meta().incomplete()) {
-            h.append("<div class=\"banner warn\">Event log is incomplete or may be truncated; "
-                    + "queue-level confidence is reduced.</div>");
+            h.append("<div class=\"banner warn\">")
+                    .append(t(zh,
+                            "Event log is incomplete or may be truncated; queue-level confidence is reduced.",
+                            "Event log 不完整或可能被截断；队列级结论置信度会降低。"))
+                    .append("</div>");
         }
-        overview(h, r);
-        timeline(h, r);
-        bottlenecks(h, r);
-        contention(h, r);
-        slowQueries(h, r);
-        recommendations(h, r);
-        embeddedJson(h, r);
+        overview(h, r, zh);
+        timeline(h, r, zh);
+        bottlenecks(h, r, zh);
+        contention(h, r, zh);
+        slowQueries(h, r, zh);
+        recommendations(h, r, zh);
+        aiAdvice(h, r, zh);
+        embeddedJson(h, r, zh);
         return h.toString();
     }
 
@@ -71,6 +95,14 @@ public final class QueueHtmlWriter {
             th{color:var(--muted);font-weight:600}
             .bar{height:10px;background:rgba(74,158,255,.18);border-radius:4px;overflow:hidden}
             .bar>span{display:block;height:100%;background:var(--accent)}
+            .chart{width:100%;max-width:980px;height:auto;margin:4px 0 14px;display:block}
+            .axis{stroke:var(--line);stroke-width:1}.chart-label{fill:var(--muted);font-size:11px}
+            .line-p50{fill:none;stroke:#3fb950;stroke-width:2}.line-p95{fill:none;stroke:#4a9eff;stroke-width:2}
+            .line-p99{fill:none;stroke:#f0a020;stroke-width:2}.line-util{fill:none;stroke:#f04848;stroke-width:2;stroke-dasharray:5 4}
+            .legend{display:flex;flex-wrap:wrap;gap:14px;margin:0 0 10px;color:var(--muted);font-size:12px}
+            .legend b{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px}
+            .query-link{color:var(--accent);text-decoration:none}.query-link:hover{text-decoration:underline}
+            .share{min-width:110px}
             .rec{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--accent);
               border-radius:6px;padding:10px 14px;margin-bottom:10px}
             pre{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:12px;overflow:auto;
@@ -78,36 +110,48 @@ public final class QueueHtmlWriter {
             """;
     }
 
-    private void overview(StringBuilder h, QueueAnalysisResult r) {
+    private void overview(StringBuilder h, QueueAnalysisResult r, boolean zh) {
         var s = r.summary();
-        h.append("<section><h2>Queue overview</h2><div class=\"grid\">");
-        kv(h, "Name", esc(s.appName()));
+        h.append("<section><h2>").append(t(zh, "Queue overview", "队列概览"))
+                .append("</h2><div class=\"grid\">");
+        kv(h, t(zh, "Name", "名称"), esc(s.appName()));
         kv(h, "App ID", esc(s.appId()));
-        kv(h, "Window", time(s.windowStart()) + " - " + time(s.windowEnd()));
-        kv(h, "Total SQL", String.valueOf(s.totalQueries()));
-        kv(h, "Completed", String.valueOf(s.completedQueries()));
-        kv(h, "Running", String.valueOf(s.runningQueries()));
-        kv(h, "Fixed cores", String.valueOf(s.fixedExecutorCores()));
+        kv(h, t(zh, "Window", "时间窗口"), time(s.windowStart()) + " - " + time(s.windowEnd()));
+        kv(h, t(zh, "Total SQL", "SQL 总数"), String.valueOf(s.totalQueries()));
+        kv(h, t(zh, "Completed", "已完成"), String.valueOf(s.completedQueries()));
+        kv(h, t(zh, "Running", "运行中"), String.valueOf(s.runningQueries()));
+        kv(h, t(zh, "Fixed cores", "固定 Core"), String.valueOf(s.fixedExecutorCores()));
         h.append("</div><p class=\"muted\">").append(esc(r.meta().assumptions())).append("</p></section>");
-        h.append("<section><h2>Queue health</h2><div class=\"cards\">");
-        card(h, "Avg pool utilization", pct(r.utilization().avgUtilization()),
+        h.append("<section><h2>").append(t(zh, "Queue health", "队列健康度"))
+                .append("</h2><div class=\"cards\">");
+        card(h, t(zh, "Avg pool utilization", "平均资源池利用率"), pct(r.utilization().avgUtilization()),
                 r.utilization().avgUtilization() > 0.85 || r.utilization().avgUtilization() < 0.35);
-        card(h, "Peak utilization", pct(r.utilization().peakUtilization()),
+        card(h, t(zh, "Peak utilization", "峰值利用率"), pct(r.utilization().peakUtilization()),
                 r.utilization().peakUtilization() > 0.95);
-        card(h, "P95 max GC", pct(r.resources().p95MaxGcRatio()),
+        card(h, t(zh, "P95 max GC", "P95 最大 GC"), pct(r.resources().p95MaxGcRatio()),
                 r.resources().p95MaxGcRatio() > 0.10);
-        card(h, "Total spill", bytes(r.resources().totalSpillBytes()),
+        card(h, t(zh, "Total spill", "总 Spill"), bytes(r.resources().totalSpillBytes()),
                 r.resources().totalSpillBytes() > 0);
-        card(h, "Contention-limited", pct(r.contention().contentionLimitedPct()),
+        card(h, t(zh, "Contention-limited", "争用受限占比"), pct(r.contention().contentionLimitedPct()),
                 r.contention().contentionLimitedPct() > 0.25);
-        card(h, "Global recommendations", String.valueOf(r.globalRecommendations().size()), false);
+        card(h, t(zh, "Global recommendations", "全局建议数"),
+                String.valueOf(r.globalRecommendations().size()), false);
         h.append("</div></section>");
     }
 
-    private void timeline(StringBuilder h, QueueAnalysisResult r) {
-        h.append("<section><h2>Hourly latency and utilization</h2><table><thead><tr>"
-                + "<th>Bucket</th><th>Queries</th><th>P50</th><th>P95</th><th>P99</th><th>Avg util</th>"
-                + "</tr></thead><tbody>");
+    private void timeline(StringBuilder h, QueueAnalysisResult r, boolean zh) {
+        h.append("<section><h2>")
+                .append(t(zh, "Latency and utilization trend", "延迟与利用率趋势"))
+                .append("</h2>");
+        timelineChart(h, r.timeline(), zh);
+        h.append("<table><thead><tr>");
+        th(h, t(zh, "Bucket", "时间桶"));
+        th(h, t(zh, "Queries", "查询数"));
+        th(h, "P50");
+        th(h, "P95");
+        th(h, "P99");
+        th(h, t(zh, "Avg util", "平均利用率"));
+        h.append("</tr></thead><tbody>");
         for (var b : r.timeline()) {
             h.append("<tr>");
             td(h, time(b.bucketStart()));
@@ -121,30 +165,48 @@ public final class QueueHtmlWriter {
         h.append("</tbody></table></section>");
     }
 
-    private void bottlenecks(StringBuilder h, QueueAnalysisResult r) {
-        h.append("<section><h2>Bottleneck clusters</h2>");
+    private void bottlenecks(StringBuilder h, QueueAnalysisResult r, boolean zh) {
+        h.append("<section><h2>").append(t(zh, "Bottleneck clusters", "瓶颈聚类"))
+                .append("</h2>");
         if (r.bottlenecks().isEmpty()) {
-            h.append("<p class=\"muted\">No repeated bottlenecks in the deeply analyzed slow-query set.</p></section>");
+            h.append("<p class=\"muted\">")
+                    .append(t(zh,
+                            "No repeated bottlenecks in the deeply analyzed slow-query set.",
+                            "深度分析的慢查询集中没有发现重复瓶颈。"))
+                    .append("</p></section>");
             return;
         }
-        h.append("<table><thead><tr><th>Rule</th><th>Category</th><th>Affected</th><th>Share</th></tr></thead><tbody>");
+        h.append("<table><thead><tr>");
+        th(h, t(zh, "Rule", "规则"));
+        th(h, t(zh, "Category", "类别"));
+        th(h, t(zh, "Affected", "影响查询数"));
+        th(h, t(zh, "Share", "占比"));
+        h.append("</tr></thead><tbody>");
         for (var b : r.bottlenecks()) {
             h.append("<tr>");
             td(h, esc(b.ruleId()));
             td(h, esc(b.category()));
             td(h, String.valueOf(b.affectedQueries()));
-            td(h, pct(b.affectedPct()));
+            td(h, shareBar(b.affectedPct()));
             h.append("</tr>");
         }
         h.append("</tbody></table></section>");
     }
 
-    private void contention(StringBuilder h, QueueAnalysisResult r) {
-        h.append("<section><h2>Contention</h2>");
+    private void contention(StringBuilder h, QueueAnalysisResult r, boolean zh) {
+        h.append("<section><h2>").append(t(zh, "Contention", "资源争用")).append("</h2>");
         if (r.contention().hotspots().isEmpty()) {
-            h.append("<p class=\"muted\">No utilization hotspot buckets above 95%.</p>");
+            h.append("<p class=\"muted\">")
+                    .append(t(zh, "No utilization hotspot buckets above 95%.",
+                            "没有超过 95% 利用率的热点时间桶。"))
+                    .append("</p>");
         } else {
-            h.append("<h3>Hotspots</h3><table><thead><tr><th>Start</th><th>End</th><th>Avg util</th></tr></thead><tbody>");
+            h.append("<h3>").append(t(zh, "Hotspots", "热点时段"))
+                    .append("</h3><table><thead><tr>");
+            th(h, t(zh, "Start", "开始"));
+            th(h, t(zh, "End", "结束"));
+            th(h, t(zh, "Avg util", "平均利用率"));
+            h.append("</tr></thead><tbody>");
             for (var w : r.contention().hotspots()) {
                 h.append("<tr>");
                 td(h, time(w.startTime()));
@@ -154,41 +216,56 @@ public final class QueueHtmlWriter {
             }
             h.append("</tbody></table>");
         }
-        h.append("<h3>Top resource hogs</h3>");
-        slowQueryTable(h, r.contention().topResourceHogs());
+        h.append("<h3>").append(t(zh, "Top resource hogs", "资源大户"))
+                .append("</h3>");
+        slowQueryTable(h, r.contention().topResourceHogs(), zh);
         h.append("</section>");
     }
 
-    private void slowQueries(StringBuilder h, QueueAnalysisResult r) {
-        h.append("<section><h2>Top slow queries</h2>");
-        slowQueryTable(h, r.topSlowQueries());
+    private void slowQueries(StringBuilder h, QueueAnalysisResult r, boolean zh) {
+        h.append("<section><h2>").append(t(zh, "Top slow queries", "最慢查询 Top-N"))
+                .append("</h2>");
+        slowQueryTable(h, r.topSlowQueries(), zh);
         h.append("</section>");
     }
 
-    private void slowQueryTable(StringBuilder h, java.util.List<QueueAnalysisResult.SlowQueryRef> rows) {
+    private void slowQueryTable(StringBuilder h, List<QueueAnalysisResult.SlowQueryRef> rows,
+                                boolean zh) {
         if (rows.isEmpty()) {
-            h.append("<p class=\"muted\">No completed SQL executions.</p>");
+            h.append("<p class=\"muted\">")
+                    .append(t(zh, "No completed SQL executions.", "没有已完成 SQL。"))
+                    .append("</p>");
             return;
         }
-        h.append("<table><thead><tr><th>StatementID</th><th>Execution</th><th>Duration</th>"
-                + "<th>Dominant bottleneck</th><th>Contention</th><th>Own core-ms</th></tr></thead><tbody>");
+        h.append("<table><thead><tr>");
+        th(h, "StatementID");
+        th(h, "Execution");
+        th(h, t(zh, "Duration", "耗时"));
+        th(h, t(zh, "Dominant bottleneck", "主要瓶颈"));
+        th(h, t(zh, "Contention", "争用"));
+        th(h, "Own core-ms");
+        h.append("</tr></thead><tbody>");
         for (var q : rows) {
             h.append("<tr>");
-            td(h, q.statementId() == null ? "-" : esc(q.statementId()));
+            td(h, statementLink(q.statementId()));
             td(h, String.valueOf(q.executionId()));
             td(h, duration(q.durationMs()));
             td(h, esc(q.dominantBottleneck()));
-            td(h, q.contentionLimited() ? "yes" : "no");
+            td(h, q.contentionLimited() ? t(zh, "yes", "是") : t(zh, "no", "否"));
             td(h, String.valueOf(q.ownCoreMs()));
             h.append("</tr>");
         }
         h.append("</tbody></table>");
     }
 
-    private void recommendations(StringBuilder h, QueueAnalysisResult r) {
-        h.append("<section><h2>Global recommendations</h2>");
+    private void recommendations(StringBuilder h, QueueAnalysisResult r, boolean zh) {
+        h.append("<section><h2>").append(t(zh, "Global recommendations", "全局调参建议"))
+                .append("</h2>");
         if (r.globalRecommendations().isEmpty()) {
-            h.append("<p class=\"muted\">No queue-level recommendation met the evidence threshold.</p></section>");
+            h.append("<p class=\"muted\">")
+                    .append(t(zh, "No queue-level recommendation met the evidence threshold.",
+                            "没有队列级建议达到证据阈值。"))
+                    .append("</p></section>");
             return;
         }
         for (var rec : r.globalRecommendations()) {
@@ -196,15 +273,143 @@ public final class QueueHtmlWriter {
                     .append(rec.confidence()).append("<br><code>")
                     .append(esc(rec.recommendation().action())).append("</code>")
                     .append("<p>").append(esc(rec.recommendation().rationale())).append("</p>")
-                    .append("<p class=\"muted\">Evidence: ").append(esc(rec.evidence()))
-                    .append("<br>Coverage: ").append(esc(rec.expectedCoverage())).append("</p></div>");
+                    .append("<p class=\"muted\">").append(t(zh, "Evidence", "证据"))
+                    .append(": ").append(esc(rec.evidence()))
+                    .append("<br>").append(t(zh, "Coverage", "预期覆盖"))
+                    .append(": ").append(esc(rec.expectedCoverage())).append("</p></div>");
         }
         h.append("</section>");
     }
 
-    private void embeddedJson(StringBuilder h, QueueAnalysisResult r) throws IOException {
-        h.append("<section><h2>Raw queue analysis (JSON contract)</h2><details><summary>Show JSON</summary><pre>")
+    private void aiAdvice(StringBuilder h, QueueAnalysisResult r, boolean zh) {
+        h.append("<section><h2>").append(t(zh, "AI queue advice", "AI 队列建议")).append("</h2>");
+        var advice = r.aiAdvice();
+        if (advice == null) {
+            h.append("<p class=\"muted\">")
+                    .append(t(zh,
+                            "Not generated. Run queue-report with --advise llm to populate this section; it consumes only the JSON below.",
+                            "未生成。使用 queue-report --advise llm 后会填充本节；LLM 只消费下方 JSON 契约。"))
+                    .append("</p></section>");
+            return;
+        }
+        h.append("<p class=\"muted\">").append(t(zh, "Source", "来源")).append(": <b>")
+                .append(esc(advice.provider())).append("</b></p>");
+        if (advice.summary() != null && !advice.summary().isBlank()) {
+            h.append("<p>").append(esc(advice.summary())).append("</p>");
+        }
+        if (advice.recommendations() != null) {
+            for (var rec : advice.recommendations()) {
+                h.append("<div class=\"rec\"><b>").append(rec.type()).append(":</b> ")
+                        .append(esc(rec.action()));
+                if (rec.rationale() != null && !rec.rationale().isBlank()) {
+                    h.append("<p>").append(esc(rec.rationale())).append("</p>");
+                }
+                if (rec.expectedImpact() != null && !rec.expectedImpact().isBlank()) {
+                    h.append("<p class=\"muted\">").append(esc(rec.expectedImpact())).append("</p>");
+                }
+                h.append("</div>");
+            }
+        }
+        h.append("</section>");
+    }
+
+    private void embeddedJson(StringBuilder h, QueueAnalysisResult r, boolean zh) throws IOException {
+        h.append("<section><h2>")
+                .append(t(zh, "Raw queue analysis (JSON contract)", "原始队列分析（JSON 契约）"))
+                .append("</h2><details><summary>")
+                .append(t(zh, "Show JSON", "显示 JSON"))
+                .append("</summary><pre>")
                 .append(esc(jsonWriter.toJson(r))).append("</pre></details></section>");
+    }
+
+    private void timelineChart(StringBuilder h, List<QueueAnalysisResult.HourBucketStat> buckets,
+                               boolean zh) {
+        if (buckets == null || buckets.isEmpty()) {
+            h.append("<p class=\"muted\">")
+                    .append(t(zh, "No timeline buckets.", "没有时间桶数据。"))
+                    .append("</p>");
+            return;
+        }
+        long maxLatency = buckets.stream()
+                .mapToLong(QueueAnalysisResult.HourBucketStat::p99Ms)
+                .max()
+                .orElse(1L);
+        if (maxLatency <= 0L) {
+            maxLatency = 1L;
+        }
+        h.append("<div class=\"legend\">")
+                .append("<span><b style=\"background:#3fb950\"></b>P50</span>")
+                .append("<span><b style=\"background:#4a9eff\"></b>P95</span>")
+                .append("<span><b style=\"background:#f0a020\"></b>P99</span>")
+                .append("<span><b style=\"background:#f04848\"></b>")
+                .append(t(zh, "Avg utilization", "平均利用率"))
+                .append("</span></div>");
+        h.append("<svg class=\"chart\" viewBox=\"0 0 860 250\" role=\"img\" aria-label=\"")
+                .append(t(zh, "Latency and utilization chart", "延迟与利用率图表"))
+                .append("\">");
+        h.append("<line x1=\"50\" y1=\"205\" x2=\"820\" y2=\"205\" class=\"axis\"/>");
+        h.append("<line x1=\"50\" y1=\"20\" x2=\"50\" y2=\"205\" class=\"axis\"/>");
+        h.append("<line x1=\"820\" y1=\"20\" x2=\"820\" y2=\"205\" class=\"axis\"/>");
+        h.append("<text x=\"50\" y=\"232\" class=\"chart-label\">")
+                .append(esc(time(buckets.get(0).bucketStart()))).append("</text>");
+        h.append("<text x=\"730\" y=\"232\" class=\"chart-label\">")
+                .append(esc(time(buckets.get(buckets.size() - 1).bucketStart()))).append("</text>");
+        h.append("<text x=\"55\" y=\"17\" class=\"chart-label\">")
+                .append(esc(duration(maxLatency))).append("</text>");
+        h.append("<text x=\"786\" y=\"17\" class=\"chart-label\">100%</text>");
+        polyline(h, "line-p50", buckets, QueueAnalysisResult.HourBucketStat::p50Ms, maxLatency);
+        polyline(h, "line-p95", buckets, QueueAnalysisResult.HourBucketStat::p95Ms, maxLatency);
+        polyline(h, "line-p99", buckets, QueueAnalysisResult.HourBucketStat::p99Ms, maxLatency);
+        utilPolyline(h, buckets);
+        h.append("</svg>");
+    }
+
+    private void polyline(StringBuilder h, String cls,
+                          List<QueueAnalysisResult.HourBucketStat> buckets,
+                          ToLongFunction<QueueAnalysisResult.HourBucketStat> valueFn,
+                          long maxLatency) {
+        h.append("<polyline class=\"").append(cls).append("\" points=\"");
+        for (int i = 0; i < buckets.size(); i++) {
+            QueueAnalysisResult.HourBucketStat b = buckets.get(i);
+            double x = x(i, buckets.size());
+            double y = 205.0 - (Math.max(0L, valueFn.applyAsLong(b)) / (double) maxLatency) * 185.0;
+            h.append(String.format(java.util.Locale.ROOT, "%.1f,%.1f ", x, y));
+        }
+        h.append("\"/>");
+    }
+
+    private void utilPolyline(StringBuilder h, List<QueueAnalysisResult.HourBucketStat> buckets) {
+        h.append("<polyline class=\"line-util\" points=\"");
+        for (int i = 0; i < buckets.size(); i++) {
+            QueueAnalysisResult.HourBucketStat b = buckets.get(i);
+            double x = x(i, buckets.size());
+            double util = Math.max(0.0, Math.min(1.0, b.avgUtilization()));
+            double y = 205.0 - util * 185.0;
+            h.append(String.format(java.util.Locale.ROOT, "%.1f,%.1f ", x, y));
+        }
+        h.append("\"/>");
+    }
+
+    private double x(int index, int size) {
+        if (size <= 1) {
+            return 50.0;
+        }
+        return 50.0 + index * (770.0 / (double) (size - 1));
+    }
+
+    private String shareBar(double pct) {
+        int width = (int) Math.round(Math.max(0.0, Math.min(1.0, pct)) * 100.0);
+        return "<div class=\"share\"><div class=\"bar\"><span style=\"width:" + width
+                + "%\"></span></div><span class=\"muted\">" + pct(pct) + "</span></div>";
+    }
+
+    private String statementLink(String statementId) {
+        if (statementId == null || statementId.isBlank()) {
+            return "-";
+        }
+        String escaped = esc(statementId);
+        return "<a class=\"query-link\" href=\"?statementId=" + attr(urlEncode(statementId))
+                + "\">" + escaped + "</a>";
     }
 
     private void kv(StringBuilder h, String k, String v) {
@@ -219,6 +424,10 @@ public final class QueueHtmlWriter {
 
     private void td(StringBuilder h, String v) {
         h.append("<td>").append(v).append("</td>");
+    }
+
+    private void th(StringBuilder h, String v) {
+        h.append("<th>").append(v).append("</th>");
     }
 
     private static String esc(String s) {
@@ -236,6 +445,25 @@ public final class QueueHtmlWriter {
             }
         }
         return b.toString();
+    }
+
+    private static String attr(String s) {
+        return esc(s);
+    }
+
+    private static String urlEncode(String s) {
+        return java.net.URLEncoder.encode(s, java.nio.charset.StandardCharsets.UTF_8);
+    }
+
+    private static String t(boolean zh, String en, String zhText) {
+        return zh ? zhText : en;
+    }
+
+    private static boolean isChineseOutput(Path out) {
+        if (out == null || out.getFileName() == null) {
+            return false;
+        }
+        return out.getFileName().toString().contains("_zh");
     }
 
     private static String duration(long ms) {
@@ -269,5 +497,18 @@ public final class QueueHtmlWriter {
         return java.time.format.DateTimeFormatter.ISO_LOCAL_TIME
                 .withZone(java.time.ZoneId.systemDefault())
                 .format(java.time.Instant.ofEpochMilli(epochMs));
+    }
+
+    private static String clockTime(String instantText) {
+        if (instantText == null || instantText.isBlank()) {
+            return "-";
+        }
+        try {
+            return java.time.format.DateTimeFormatter.ISO_LOCAL_TIME
+                    .withZone(java.time.ZoneId.systemDefault())
+                    .format(java.time.Instant.parse(instantText));
+        } catch (RuntimeException e) {
+            return instantText;
+        }
     }
 }

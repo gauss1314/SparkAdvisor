@@ -17,6 +17,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Async single-flight coordinator for queue reports in the History Server tab.
@@ -27,6 +28,7 @@ import java.util.concurrent.ThreadFactory;
 public final class QueueAnalysisCoordinator {
 
     private static final int MAX_CACHED_RESULTS = 8;
+    private static final long ANALYSIS_TIMEOUT_MINUTES = 30L;
 
     private final Configuration hadoopConf;
     private final QueueAnalyzer analyzer;
@@ -66,7 +68,7 @@ public final class QueueAnalysisCoordinator {
                     } finally {
                         inFlight.remove(key);
                     }
-                }, executor));
+                }, executor).orTimeout(ANALYSIS_TIMEOUT_MINUTES, TimeUnit.MINUTES));
 
         if (future.isDone() && !future.isCompletedExceptionally()) {
             QueueAnalysisResult result = future.get();
@@ -75,7 +77,8 @@ public final class QueueAnalysisCoordinator {
         }
         if (future.isCompletedExceptionally()) {
             inFlight.remove(snapshot.key());
-            return "<div class=\"banner warn\">Queue analysis failed. Refresh to retry.</div>";
+            return "<div class=\"banner warn\">Queue analysis failed or timed out after "
+                    + ANALYSIS_TIMEOUT_MINUTES + " minutes. Refresh to retry.</div>";
         }
         return inProgressHtml(snapshot);
     }

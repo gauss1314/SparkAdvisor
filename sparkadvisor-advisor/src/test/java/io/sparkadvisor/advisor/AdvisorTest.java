@@ -4,6 +4,7 @@ import io.sparkadvisor.advisor.api.TuningAdvisor;
 import io.sparkadvisor.advisor.llm.AdviceResponseParser;
 import io.sparkadvisor.advisor.llm.LlmAdvisor;
 import io.sparkadvisor.advisor.llm.LlmProvider;
+import io.sparkadvisor.advisor.llm.MinimaxLlmProvider;
 import io.sparkadvisor.advisor.rule.RuleBasedAdvisor;
 import io.sparkadvisor.core.analyze.SqlAnalysis;
 import io.sparkadvisor.core.analyze.StageAnalysis;
@@ -20,6 +21,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class AdvisorTest {
 
@@ -111,6 +113,14 @@ class AdvisorTest {
         assertEquals(null, AdvisorFactory.forMode("none"));
         assertEquals("rule-based", AdvisorFactory.forMode("rule").name());
         assertEquals("rule-based", AdvisorFactory.forMode(null).name());
-        assertTrue(AdvisorFactory.forMode("llm").name().startsWith("llm"));
+        assertEquals("llm:minimax-m2.5", AdvisorFactory.forMode("llm").name());
+        assertEquals("llm:claude", AdvisorFactory.forMode("llm:claude").name());
+    }
+
+    @Test
+    void minimaxProviderIsDefaultAndRequiresApiKey() {
+        var provider = new MinimaxLlmProvider(null, null, null);
+        assertEquals("llm:minimax-m2.5", provider.name());
+        assertThrows(IllegalStateException.class, () -> provider.complete("s", "u"));
     }
 }

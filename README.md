@@ -11,7 +11,7 @@ SparkAdvisor 是一个以 **Java 21** 实现、面向 **Apache Spark 3.5.1** 的
 - **硬指标分析**：计算关键路径、理想耗时、实际墙钟、核心利用率、倾斜比、spill 比例、GC 占比、调度延迟等实测指标。
 - **规则诊断**：内置 8 条 AQE 感知规则，覆盖数据倾斜、spill、并发不足、过度并行、小文件、GC、broadcast join 机会与调度等待。
 - **调参预测**：对 shuffle partition 与 executor/core 伸缩做成本模型估计，输出假设、置信度和可能反转条件；倾斜场景会明确提示“调分区通常无效”。
-- **Advisor 建议**：默认使用离线确定性的 `RuleBasedAdvisor`；可通过 `--advise llm` 调用 LLM Advisor。LLM 只消费结构化 `AnalysisResult` JSON，绝不发送原始 event log。
+- **Advisor 建议**：默认使用离线确定性的 `RuleBasedAdvisor`；可通过 `--advise llm` 调用 LLM Advisor，默认 Provider 为 MiniMax-M2.5。LLM 只消费结构化 `AnalysisResult` / `QueueAnalysisResult` JSON，绝不发送原始 event log。
 - **队列级监控分析**：`queue-report` 汇总一整个长驻应用的所有 SQL，输出延迟分位、瓶颈聚类、固定资源池利用率、争用受限查询、资源大户与全局调参建议。
 - **History Server 集成**：提供 Spark History Server tab 插件，通过 `AppHistoryServerPlugin` / `ServiceLoader` 接入；默认展示队列级报告，输入 StatementID 可下钻单条 SQL。
 
@@ -47,8 +47,8 @@ HDFS Event Log
 - **M1**：父 POM、`core/report/cli`、领域模型、分位数估计器、StatementID 提取与定位、event log reader/parser、`MetricAggregator`、`AnalysisResult`、HTML/JSON 报告、CLI `analyze` 端到端。
 - **M2**：`sparkadvisor-analyzer` 规则引擎与 `sparkadvisor-predictor` 成本模型预测；报告新增 Predictions 区域。
 - **M3**：History Server tab 插件已实现，采用自给自足策略重解析 event log，不依赖 SHS 内部 store。
-- **F4**：`TuningAdvisor`、`RuleBasedAdvisor`、`LlmAdvisor`、`AnthropicLlmProvider`、prompt 构造与 LLM JSON 响应解析已实现；LLM 失败时优雅降级。
-- **Monitor**：新增 `sparkadvisor-monitor`，包含 `QueueAnalyzer`、`QuerySeriesCollector`、`ContentionTimeline`、`QueueAggregator`、`QueueRuleEngine`、`QueueAnalysisResult`、队列 HTML/JSON 渲染；CLI 新增 `queue-report`，SHS tab 空 StatementID 时异步生成队列报告。
+- **F4**：`TuningAdvisor`、`RuleBasedAdvisor`、`LlmAdvisor`、`MinimaxLlmProvider`（默认 MiniMax-M2.5）、`AnthropicLlmProvider`（可选）、prompt 构造与 LLM JSON 响应解析已实现；LLM 失败时优雅降级。
+- **Monitor**：新增 `sparkadvisor-monitor`，包含 `QueueAnalyzer`、`QuerySeriesCollector`、`ContentionTimeline`、`QueueAggregator`、`QueueRuleEngine`、`QueueAnalysisResult`、队列 HTML/JSON 渲染和队列级 LLM Advisor；CLI 新增 `queue-report`，SHS tab 空 StatementID 时异步生成队列报告。
 
 已验证项：
 
@@ -101,21 +101,22 @@ bin/sparkadvisor analyze \
 | `--top` | 未指定 StatementID 时，选择最慢的 N 条 SQL，当前 CLI 取其中最慢一条生成报告。 |
 | `--keep-raw` | 调试用，保留原始 task 记录，会显著增加内存占用。 |
 | `--hadoop-conf-dir` | 覆盖环境变量中的 Hadoop 配置目录。 |
-| `--advise none\|rule\|llm` | Advisor 模式，默认 `rule`；`llm` 需要 `ANTHROPIC_API_KEY`。 |
+| `--advise none\|rule\|llm` | Advisor 模式，默认 `rule`；`llm` 默认调用 MiniMax-M2.5，需要 `MINIMAX_API_KEY`。可用 `llm:claude` 走 Anthropic。 |
 
 LLM 模式示例：
 
 ```bash
-export ANTHROPIC_API_KEY=...
+export MINIMAX_API_KEY=...
 bin/sparkadvisor analyze \
   --path hdfs:///spark2x/eventLog/application_1700000000000_0001 \
   --statement-id 20260521_abc123 \
   --advise llm \
   --format html \
-  --out ./report-llm.html
+  --out ./report-llm_zh.html
 ```
 
-`--advise llm` 只会发送结构化 `AnalysisResult`，不会发送 GB 级 raw event log。
+`--advise llm` 只会发送结构化 `AnalysisResult`，不会发送 GB 级 raw event log。HTML 输出文件名包含 `_zh` 时生成中文报告，否则生成英文报告。
+可选环境变量：`MINIMAX_MODEL` 覆盖默认模型，`MINIMAX_BASE_URL` 指向内部网关或代理。
 
 队列级历史报告：
 
@@ -123,16 +124,17 @@ bin/sparkadvisor analyze \
 bin/sparkadvisor queue-report \
   --path hdfs:///spark2x/eventLog/application_1700000000000_0001 \
   --format html \
-  --out ./queue-report.html \
+  --out ./queue-report_zh.html \
   --top 50 \
-  --bucket 1h
+  --bucket 1h \
+  --advise llm
 ```
 
-`queue-report` 用于分析一个完整长驻查询队列应用的一整轮 event log。`--top` 控制深度分析的最慢 SQL 数量；其它 SQL 仍进入吞吐、延迟和趋势聚合。`--bucket` 支持 `15m`、`1h`、`3600s` 等形式。
+`queue-report` 用于分析一个完整长驻查询队列应用的一整轮 event log。`--top` 控制深度分析的最慢 SQL 数量；其它 SQL 仍进入吞吐、延迟和趋势聚合。`--bucket` 支持 `15m`、`1h`、`3600s` 等形式。队列级 `--advise llm` 同样默认使用 MiniMax-M2.5，并只发送结构化 `QueueAnalysisResult`。
 
 ## History Server 插件
 
-插件以 Spark History Server tab 的形式接入，部署文档见 [sparkadvisor-ui-plugin/DEPLOY.md](sparkadvisor-ui-plugin/DEPLOY.md)。
+插件以 Spark History Server tab 的形式接入，部署文档见 [DEPLOY.md](DEPLOY.md)。
 
 基本流程：
 
@@ -165,6 +167,7 @@ HTML 报告包含：
 - Recommendations：SQL 改写与 Spark 配置建议
 - Advisor 输出：规则版或 LLM 版摘要与建议
 - 页面底部内嵌完整 `AnalysisResult` JSON
+- 文件名包含 `_zh` 时输出中文 HTML；否则输出英文 HTML
 
 示例报告见 [samples/demo-report.html](samples/demo-report.html)。
 
@@ -176,6 +179,7 @@ HTML 报告包含：
 - 争用报告：争用受限占比、热点时段、资源大户
 - 慢查询榜：StatementID、executionId、耗时、主导瓶颈、争用分类
 - 全局建议：Q1-Q7 队列级规则产出的证据、置信度和覆盖范围
+- AI 队列建议：`queue-report --advise llm` 生成的队列级总结与建议
 - 页面底部内嵌完整 `QueueAnalysisResult` JSON
 
 ## 运行环境注意事项

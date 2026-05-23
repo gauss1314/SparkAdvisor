@@ -177,19 +177,22 @@ bin/sparkadvisor analyze \
 | `--top` | 未指定 StatementID 时用于选择慢 SQL，当前报告输出最慢一条。 |
 | `--keep-raw` | 调试用，保留原始 task 记录，会增加内存占用。 |
 | `--hadoop-conf-dir` | 覆盖环境变量中的 Hadoop 配置目录。 |
-| `--advise none|rule|llm` | Advisor 模式，默认 `rule`；`llm` 需要 `ANTHROPIC_API_KEY`。 |
+| `--advise none|rule|llm` | Advisor 模式，默认 `rule`；`llm` 默认调用 MiniMax-M2.5，需要 `MINIMAX_API_KEY`。可用 `llm:claude` 走 Anthropic。 |
 
 LLM 模式只发送结构化 `AnalysisResult` JSON，不发送 raw event log：
 
 ```bash
-export ANTHROPIC_API_KEY=...
+export MINIMAX_API_KEY=...
 bin/sparkadvisor analyze \
   --path hdfs:///spark2x/eventLog/application_1700000000000_0001 \
   --statement-id 20260521_abc123 \
   --advise llm \
   --format html \
-  --out ./report-llm.html
+  --out ./report-llm_zh.html
 ```
+
+HTML 输出文件名包含 `_zh` 时生成中文报告，否则生成英文报告。
+可选环境变量：`MINIMAX_MODEL` 覆盖默认模型，`MINIMAX_BASE_URL` 指向内部网关或代理。
 
 ### 3.2 队列级报告
 
@@ -199,9 +202,10 @@ bin/sparkadvisor analyze \
 bin/sparkadvisor queue-report \
   --path hdfs:///spark2x/eventLog/application_1700000000000_0001 \
   --format html \
-  --out ./queue-report.html \
+  --out ./queue-report_zh.html \
   --top 50 \
-  --bucket 1h
+  --bucket 1h \
+  --advise llm
 ```
 
 输出 JSON：
@@ -225,6 +229,7 @@ bin/sparkadvisor queue-report \
 | `--top` | 深度分析的最慢 SQL 数量，默认 50；其它 SQL 仍进入吞吐、延迟和趋势聚合。 |
 | `--bucket` | 时间分桶粒度，例如 `15m`、`1h`、`3600s`，默认 `1h`。 |
 | `--hadoop-conf-dir` | 覆盖环境变量中的 Hadoop 配置目录。 |
+| `--advise none|llm` | 队列级 AI Advisor，默认 `none`；`llm` 默认调用 MiniMax-M2.5，只发送结构化 `QueueAnalysisResult`。 |
 
 队列报告包含：
 
@@ -233,6 +238,7 @@ bin/sparkadvisor queue-report \
 - 固定 executor/core 池的利用率时间序列。
 - 争用受限查询、热点时段和资源大户。
 - 队列级全局调参建议，带证据、置信度和预期覆盖范围。
+- 可选 AI 队列建议（`--advise llm`），Provider 默认 MiniMax-M2.5。
 - 内嵌完整 `QueueAnalysisResult` JSON。
 
 ## 4. 运行中日志与不完整数据

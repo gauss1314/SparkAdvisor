@@ -32,6 +32,10 @@
       <artifactId>sparkadvisor-report</artifactId>
     </dependency>
     <dependency>
+      <groupId>io.sparkadvisor</groupId>
+      <artifactId>sparkadvisor-advisor</artifactId>
+    </dependency>
+    <dependency>
       <groupId>com.fasterxml.jackson.core</groupId>
       <artifactId>jackson-databind</artifactId>
     </dependency>

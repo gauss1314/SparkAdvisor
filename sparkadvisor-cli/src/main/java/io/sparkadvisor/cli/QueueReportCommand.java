@@ -2,6 +2,7 @@ package io.sparkadvisor.cli;
 
 import io.sparkadvisor.monitor.QueueAnalyzer;
 import io.sparkadvisor.monitor.aggregate.QueueAnalysisResult;
+import io.sparkadvisor.monitor.advisor.QueueAdvisorFactory;
 import io.sparkadvisor.monitor.render.QueueHtmlWriter;
 import io.sparkadvisor.monitor.render.QueueJsonWriter;
 
@@ -46,6 +47,10 @@ public final class QueueReportCommand implements Callable<Integer> {
             description = "Override HADOOP_CONF_DIR (otherwise inherited from the environment).")
     String hadoopConfDir;
 
+    @Option(names = "--advise", defaultValue = "none",
+            description = "Queue AI advisor mode: none | llm. Default: none. llm uses MiniMax-M2.5 unless overridden.")
+    String advise;
+
     @Override
     public Integer call() throws Exception {
         Configuration conf = new Configuration();
@@ -56,6 +61,10 @@ public final class QueueReportCommand implements Callable<Integer> {
 
         QueueAnalysisResult result = new QueueAnalyzer(conf)
                 .analyze(path, top, parseDurationMs(bucket));
+        var advisor = QueueAdvisorFactory.forMode(advise);
+        if (advisor != null) {
+            result = result.withAiAdvice(advisor.advise(result));
+        }
         String fmt = format == null ? "html" : format.toLowerCase();
         Path outPath = Path.of(out != null ? out : "queue-report." + fmt);
         switch (fmt) {

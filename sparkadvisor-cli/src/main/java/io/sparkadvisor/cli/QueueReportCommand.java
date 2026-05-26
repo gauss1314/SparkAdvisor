@@ -3,6 +3,7 @@ package io.sparkadvisor.cli;
 import io.sparkadvisor.monitor.QueueAnalyzer;
 import io.sparkadvisor.monitor.aggregate.QueueAnalysisResult;
 import io.sparkadvisor.monitor.advisor.QueueAdvisorFactory;
+import io.sparkadvisor.monitor.advisor.QueueLlmAdvisor;
 import io.sparkadvisor.monitor.render.QueueHtmlWriter;
 import io.sparkadvisor.monitor.render.QueueJsonWriter;
 
@@ -11,6 +12,7 @@ import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.concurrent.Callable;
 
 /**
@@ -61,12 +63,12 @@ public final class QueueReportCommand implements Callable<Integer> {
 
         QueueAnalysisResult result = new QueueAnalyzer(conf)
                 .analyze(path, top, parseDurationMs(bucket));
-        var advisor = QueueAdvisorFactory.forMode(advise);
+        QueueLlmAdvisor advisor = QueueAdvisorFactory.forMode(advise);
         if (advisor != null) {
             result = result.withAiAdvice(advisor.advise(result));
         }
         String fmt = format == null ? "html" : format.toLowerCase();
-        Path outPath = Path.of(out != null ? out : "queue-report." + fmt);
+        Path outPath = Paths.get(out != null ? out : "queue-report." + fmt);
         if ("json".equals(fmt)) {
             new QueueJsonWriter().write(result, outPath);
         } else if ("html".equals(fmt)) {

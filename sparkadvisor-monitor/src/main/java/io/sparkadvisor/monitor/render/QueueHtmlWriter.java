@@ -1,8 +1,12 @@
 package io.sparkadvisor.monitor.render;
 
+import io.sparkadvisor.core.finding.Recommendation;
 import io.sparkadvisor.monitor.aggregate.QueueAnalysisResult;
+import io.sparkadvisor.report.model.AnalysisResult;
 
 import java.io.IOException;
+import java.io.UnsupportedEncodingException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -16,7 +20,7 @@ public final class QueueHtmlWriter {
     private final QueueJsonWriter jsonWriter = new QueueJsonWriter();
 
     public void write(QueueAnalysisResult result, Path out) throws IOException {
-        Files.writeString(out, render(result, isChineseOutput(out)));
+        Files.write(out, render(result, isChineseOutput(out)).getBytes(StandardCharsets.UTF_8));
     }
 
     public String render(QueueAnalysisResult r) throws IOException {
@@ -73,45 +77,45 @@ public final class QueueHtmlWriter {
     }
 
     public String stylesheet() {
-        return """
-            :root{--bg:#0f1419;--panel:#161b22;--line:#2b333d;--fg:#e6edf3;--muted:#8b949e;
-              --accent:#4a9eff;--warn:#f0a020;--crit:#f04848;--ok:#3fb950}
-            *{box-sizing:border-box}
-            body{margin:0;background:var(--bg);color:var(--fg);
-              font:14px/1.5 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
-            header{padding:20px 24px;border-bottom:1px solid var(--line)}
-            h1{margin:0;font-size:20px} h2{font-size:15px;margin:0 0 12px;color:var(--accent)}
-            h3{font-size:13px;margin:0 0 6px}.sub,.muted{color:var(--muted)}
-            section{padding:18px 24px;border-bottom:1px solid var(--line)}
-            .banner{padding:10px 24px;font-size:13px;border-bottom:1px solid var(--line)}
-            .banner.warn{background:rgba(240,160,32,.12);color:var(--warn)}
-            .grid{display:flex;flex-wrap:wrap;gap:10px 28px}
-            .kv{display:flex;flex-direction:column}.k{color:var(--muted);font-size:11px}.v{font-size:15px;font-weight:600}
-            .cards{display:flex;flex-wrap:wrap;gap:12px}.card{background:var(--panel);border:1px solid var(--line);
-              border-radius:8px;padding:12px 16px;min-width:150px}.card.warn{border-color:var(--warn)}
-            .card-v{font-size:20px;font-weight:700}.card-l{color:var(--muted);font-size:12px}
-            table{width:100%;border-collapse:collapse;font-size:13px}
-            th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line)}
-            th{color:var(--muted);font-weight:600}
-            .bar{height:10px;background:rgba(74,158,255,.18);border-radius:4px;overflow:hidden}
-            .bar>span{display:block;height:100%;background:var(--accent)}
-            .chart{width:100%;max-width:980px;height:auto;margin:4px 0 14px;display:block}
-            .axis{stroke:var(--line);stroke-width:1}.chart-label{fill:var(--muted);font-size:11px}
-            .line-p50{fill:none;stroke:#3fb950;stroke-width:2}.line-p95{fill:none;stroke:#4a9eff;stroke-width:2}
-            .line-p99{fill:none;stroke:#f0a020;stroke-width:2}.line-util{fill:none;stroke:#f04848;stroke-width:2;stroke-dasharray:5 4}
-            .legend{display:flex;flex-wrap:wrap;gap:14px;margin:0 0 10px;color:var(--muted);font-size:12px}
-            .legend b{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px}
-            .query-link{color:var(--accent);text-decoration:none}.query-link:hover{text-decoration:underline}
-            .share{min-width:110px}
-            .rec{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--accent);
-              border-radius:6px;padding:10px 14px;margin-bottom:10px}
-            pre{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:12px;overflow:auto;
-              font-size:12px;max-height:420px} code{background:rgba(255,255,255,.06);padding:1px 5px;border-radius:4px}
-            """;
+        return String.join("\n",
+                ":root{--bg:#0f1419;--panel:#161b22;--line:#2b333d;--fg:#e6edf3;--muted:#8b949e;",
+                "  --accent:#4a9eff;--warn:#f0a020;--crit:#f04848;--ok:#3fb950}",
+                "*{box-sizing:border-box}",
+                "body{margin:0;background:var(--bg);color:var(--fg);",
+                "  font:14px/1.5 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}",
+                "header{padding:20px 24px;border-bottom:1px solid var(--line)}",
+                "h1{margin:0;font-size:20px} h2{font-size:15px;margin:0 0 12px;color:var(--accent)}",
+                "h3{font-size:13px;margin:0 0 6px}.sub,.muted{color:var(--muted)}",
+                "section{padding:18px 24px;border-bottom:1px solid var(--line)}",
+                ".banner{padding:10px 24px;font-size:13px;border-bottom:1px solid var(--line)}",
+                ".banner.warn{background:rgba(240,160,32,.12);color:var(--warn)}",
+                ".grid{display:flex;flex-wrap:wrap;gap:10px 28px}",
+                ".kv{display:flex;flex-direction:column}.k{color:var(--muted);font-size:11px}.v{font-size:15px;font-weight:600}",
+                ".cards{display:flex;flex-wrap:wrap;gap:12px}.card{background:var(--panel);border:1px solid var(--line);",
+                "  border-radius:8px;padding:12px 16px;min-width:150px}.card.warn{border-color:var(--warn)}",
+                ".card-v{font-size:20px;font-weight:700}.card-l{color:var(--muted);font-size:12px}",
+                "table{width:100%;border-collapse:collapse;font-size:13px}",
+                "th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line)}",
+                "th{color:var(--muted);font-weight:600}",
+                ".bar{height:10px;background:rgba(74,158,255,.18);border-radius:4px;overflow:hidden}",
+                ".bar>span{display:block;height:100%;background:var(--accent)}",
+                ".chart{width:100%;max-width:980px;height:auto;margin:4px 0 14px;display:block}",
+                ".axis{stroke:var(--line);stroke-width:1}.chart-label{fill:var(--muted);font-size:11px}",
+                ".line-p50{fill:none;stroke:#3fb950;stroke-width:2}.line-p95{fill:none;stroke:#4a9eff;stroke-width:2}",
+                ".line-p99{fill:none;stroke:#f0a020;stroke-width:2}.line-util{fill:none;stroke:#f04848;stroke-width:2;stroke-dasharray:5 4}",
+                ".legend{display:flex;flex-wrap:wrap;gap:14px;margin:0 0 10px;color:var(--muted);font-size:12px}",
+                ".legend b{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px}",
+                ".query-link{color:var(--accent);text-decoration:none}.query-link:hover{text-decoration:underline}",
+                ".share{min-width:110px}",
+                ".rec{background:var(--panel);border:1px solid var(--line);border-left:3px solid var(--accent);",
+                "  border-radius:6px;padding:10px 14px;margin-bottom:10px}",
+                "pre{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:12px;overflow:auto;",
+                "  font-size:12px;max-height:420px} code{background:rgba(255,255,255,.06);padding:1px 5px;border-radius:4px}",
+                "");
     }
 
     private void overview(StringBuilder h, QueueAnalysisResult r, boolean zh) {
-        var s = r.summary();
+        QueueAnalysisResult.QueueSummary s = r.summary();
         h.append("<section><h2>").append(t(zh, "Queue overview", "队列概览"))
                 .append("</h2><div class=\"grid\">");
         kv(h, t(zh, "Name", "名称"), esc(s.appName()));
@@ -152,7 +156,7 @@ public final class QueueHtmlWriter {
         th(h, "P99");
         th(h, t(zh, "Avg util", "平均利用率"));
         h.append("</tr></thead><tbody>");
-        for (var b : r.timeline()) {
+        for (QueueAnalysisResult.HourBucketStat b : r.timeline()) {
             h.append("<tr>");
             td(h, time(b.bucketStart()));
             td(h, String.valueOf(b.queryCount()));
@@ -182,7 +186,7 @@ public final class QueueHtmlWriter {
         th(h, t(zh, "Affected", "影响查询数"));
         th(h, t(zh, "Share", "占比"));
         h.append("</tr></thead><tbody>");
-        for (var b : r.bottlenecks()) {
+        for (QueueAnalysisResult.BottleneckCluster b : r.bottlenecks()) {
             h.append("<tr>");
             td(h, esc(b.ruleId()));
             td(h, esc(b.category()));
@@ -207,7 +211,7 @@ public final class QueueHtmlWriter {
             th(h, t(zh, "End", "结束"));
             th(h, t(zh, "Avg util", "平均利用率"));
             h.append("</tr></thead><tbody>");
-            for (var w : r.contention().hotspots()) {
+            for (QueueAnalysisResult.ContentionReport.Window w : r.contention().hotspots()) {
                 h.append("<tr>");
                 td(h, time(w.startTime()));
                 td(h, time(w.endTime()));
@@ -245,7 +249,7 @@ public final class QueueHtmlWriter {
         th(h, t(zh, "Contention", "争用"));
         th(h, "Own core-ms");
         h.append("</tr></thead><tbody>");
-        for (var q : rows) {
+        for (QueueAnalysisResult.SlowQueryRef q : rows) {
             h.append("<tr>");
             td(h, statementLink(q.statementId()));
             td(h, String.valueOf(q.executionId()));
@@ -268,7 +272,7 @@ public final class QueueHtmlWriter {
                     .append("</p></section>");
             return;
         }
-        for (var rec : r.globalRecommendations()) {
+        for (QueueAnalysisResult.QueueRecommendation rec : r.globalRecommendations()) {
             h.append("<div class=\"rec\"><b>").append(esc(rec.queueRuleId())).append("</b> &middot; ")
                     .append(rec.confidence()).append("<br><code>")
                     .append(esc(rec.recommendation().action())).append("</code>")
@@ -283,7 +287,7 @@ public final class QueueHtmlWriter {
 
     private void aiAdvice(StringBuilder h, QueueAnalysisResult r, boolean zh) {
         h.append("<section><h2>").append(t(zh, "AI queue advice", "AI 队列建议")).append("</h2>");
-        var advice = r.aiAdvice();
+        AnalysisResult.AiAdvice advice = r.aiAdvice();
         if (advice == null) {
             h.append("<p class=\"muted\">")
                     .append(t(zh,
@@ -298,7 +302,7 @@ public final class QueueHtmlWriter {
             h.append("<p>").append(esc(advice.summary())).append("</p>");
         }
         if (advice.recommendations() != null) {
-            for (var rec : advice.recommendations()) {
+            for (Recommendation rec : advice.recommendations()) {
                 h.append("<div class=\"rec\"><b>").append(rec.type()).append(":</b> ")
                         .append(esc(rec.action()));
                 if (rec.rationale() != null && !rec.rationale().trim().isEmpty()) {
@@ -452,7 +456,11 @@ public final class QueueHtmlWriter {
     }
 
     private static String urlEncode(String s) {
-        return java.net.URLEncoder.encode(s, java.nio.charset.StandardCharsets.UTF_8);
+        try {
+            return java.net.URLEncoder.encode(s, "UTF-8");
+        } catch (UnsupportedEncodingException e) {
+            throw new IllegalStateException("UTF-8 is not supported", e);
+        }
     }
 
     private static String t(boolean zh, String en, String zhText) {

@@ -59,9 +59,10 @@ public final class BroadcastJoinRule implements Rule {
                 Recommendation.sql(
                         "add a broadcast() hint on the small side",
                         "Forces a broadcast join regardless of the auto threshold when you know a side is small.",
-                        "Explicit and reliable when the small side is known."));
+                        "Explicit and reliable when the small side is known.")));
 
         java.util.List<Finding> out = new java.util.ArrayList<Finding>();
         out.add(new Finding(id(), "join", Severity.INFO, null, explanation, evidence, recs));
+        return out;
     }
 }

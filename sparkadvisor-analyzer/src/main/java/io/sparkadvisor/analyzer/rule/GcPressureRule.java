@@ -46,7 +46,7 @@ public final class GcPressureRule implements Rule {
                     Recommendation.conf(
                             "consider the G1 collector and review object-heavy UDFs",
                             "G1 handles large heaps better; heavy intermediate objects drive GC.",
-                            "Workload-dependent."));
+                            "Workload-dependent.")));
 
             findings.add(new Finding(id(), "gc", Severity.WARN, st.stageId(),
                     explanation, evidence, recs));

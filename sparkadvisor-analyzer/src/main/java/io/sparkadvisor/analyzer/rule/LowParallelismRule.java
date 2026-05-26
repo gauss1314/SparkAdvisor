@@ -55,5 +55,6 @@ public final class LowParallelismRule implements Rule {
         java.util.List<Finding> out = new java.util.ArrayList<Finding>();
         out.add(new Finding(id(), "parallelism", Severity.WARN, null,
                 explanation, evidence, recs));
+        return out;
     }
 }

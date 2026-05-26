@@ -1,5 +1,6 @@
 package io.sparkadvisor.analyzer.rule;
 
+import io.sparkadvisor.analyzer.AqeContext;
 import io.sparkadvisor.analyzer.RuleContext;
 import io.sparkadvisor.analyzer.RuleThresholds;
 import io.sparkadvisor.core.analyze.StageAnalysis;
@@ -61,7 +62,7 @@ public final class DataSkewRule implements Rule {
 
     private List<Recommendation> recommendations(RuleContext ctx) {
         List<Recommendation> recs = new ArrayList<>();
-        var aqe = ctx.aqe();
+        AqeContext aqe = ctx.aqe();
         if (!aqe.aqeEnabled()) {
             recs.add(Recommendation.conf(
                     "set spark.sql.adaptive.enabled=true; set spark.sql.adaptive.skewJoin.enabled=true",

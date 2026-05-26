@@ -3,8 +3,8 @@
 # SparkAdvisor launcher.
 #
 # Run as root on a cluster client node. Performs the fixed Kerberos init, then
-# launches the CLI on JDK 21 with the module-open flags Spark 3.5.1 needs for
-# event-log replay/reflection.
+# launches the Java 8 compatible CLI. On JDK 9+ it also adds the module-open
+# flags Spark 3.5.1 needs for event-log replay/reflection.
 #
 # Usage:
 #   bin/sparkadvisor analyze --path hdfs:///.../application_xxx --statement-id <ID>
@@ -33,15 +33,31 @@ SPARK_HOME="${SPARK_HOME:-/opt/client/Spark2x/spark}"
 HADOOP_CONF_DIR="${HADOOP_CONF_DIR:-/opt/client/HDFS/hadoop/etc/hadoop}"
 CP="${JAR}:${HADOOP_CONF_DIR}:${SPARK_HOME}/jars/*"
 
-# --- 4) JDK 21 module opens required by Spark 3.5.1 -----------------------------
-JAVA_OPTS=(
-  --add-opens=java.base/java.lang=ALL-UNNAMED
-  --add-opens=java.base/java.lang.invoke=ALL-UNNAMED
-  --add-opens=java.base/java.nio=ALL-UNNAMED
-  --add-opens=java.base/sun.nio.ch=ALL-UNNAMED
-  --add-opens=java.base/java.util=ALL-UNNAMED
-  --add-opens=java.base/java.util.concurrent=ALL-UNNAMED
-  -Dfile.encoding=UTF-8
-)
+# --- 4) JVM flags ---------------------------------------------------------------
+JAVA_BIN="${JAVA_HOME:+${JAVA_HOME}/bin/}java"
+JAVA_VERSION_LINE="$("${JAVA_BIN}" -version 2>&1 | head -n 1)"
+if [[ "${JAVA_VERSION_LINE}" =~ \"1\.([0-9]+) ]]; then
+  JAVA_MAJOR="${BASH_REMATCH[1]}"
+elif [[ "${JAVA_VERSION_LINE}" =~ \"([0-9]+) ]]; then
+  JAVA_MAJOR="${BASH_REMATCH[1]}"
+else
+  JAVA_MAJOR=8
+fi
 
-exec java "${JAVA_OPTS[@]}" -cp "${CP}" io.sparkadvisor.cli.SparkAdvisorCli "$@"
+JAVA_OPTS=(-Dfile.encoding=UTF-8)
+
+# Spark 3.5.1 on JDK 9+ may need module opens for replay/reflection. Java 8 does
+# not support --add-opens, so do not pass these flags there.
+if (( JAVA_MAJOR >= 9 )); then
+  JAVA_OPTS=(
+    --add-opens=java.base/java.lang=ALL-UNNAMED
+    --add-opens=java.base/java.lang.invoke=ALL-UNNAMED
+    --add-opens=java.base/java.nio=ALL-UNNAMED
+    --add-opens=java.base/sun.nio.ch=ALL-UNNAMED
+    --add-opens=java.base/java.util=ALL-UNNAMED
+    --add-opens=java.base/java.util.concurrent=ALL-UNNAMED
+    "${JAVA_OPTS[@]}"
+  )
+fi
+
+exec "${JAVA_BIN}" "${JAVA_OPTS[@]}" -cp "${CP}" io.sparkadvisor.cli.SparkAdvisorCli "$@"

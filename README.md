@@ -1,6 +1,6 @@
 # SparkAdvisor
 
-SparkAdvisor 是一个以 **Java 21** 实现、面向 **Apache Spark 3.5.1** 的 Event Log 离线分析与调优顾问。它读取 HDFS 上归档的 Spark event log，复用 Spark 自带的 `ReplayListenerBus` / `JsonProtocol` 还原事件，计算关键路径与硬指标，基于规则和成本模型给出调优建议，并输出自包含 HTML 或 JSON 报告。除单条 SQL 诊断外，项目还提供 `sparkadvisor-monitor` 队列分析层，用于长驻查询队列的一整轮跨 SQL 聚合分析。
+SparkAdvisor 是一个以 **Java 8 运行时兼容** 为目标、面向 **Apache Spark 3.5.1** 的 Event Log 离线分析与调优顾问。它读取 HDFS 上归档的 Spark event log，复用 Spark 自带的 `ReplayListenerBus` / `JsonProtocol` 还原事件，计算关键路径与硬指标，基于规则和成本模型给出调优建议，并输出自包含 HTML 或 JSON 报告。除单条 SQL 诊断外，项目还提供 `sparkadvisor-monitor` 队列分析层，用于长驻查询队列的一整轮跨 SQL 聚合分析。
 
 完整设计见 [SparkAdvisor-design.md](SparkAdvisor-design.md)，仓库协作与实现约束见 [AGENTS.md](AGENTS.md)。
 
@@ -34,7 +34,7 @@ HDFS Event Log
 
 关键约束：
 
-- 源码使用 Java 21；不使用 Scala 编写源码。
+- 生产源码按 Java 8 兼容编写，使用 JDK 21 编译为 Java 8 bytecode；测试源码可使用 JDK 21 语法。不使用 Scala 编写源码。
 - Spark/Hadoop 依赖全部是 `provided`，不会打进 CLI 或插件 fat-jar；运行时由集群 `/opt/client` 环境提供 classpath。
 - 事件解析不手写 Spark event schema，统一复用 Spark 的回放机制，降低跨小版本字段演化风险。
 - 解析必须流式、低内存；task 指标在 `onTaskEnd` 增量进入分位数估计器，默认不保留全部原始 task。队列争用分析会显式开启轻量 `TaskInterval` 收集，只保存 launch/finish/execution 归属。
@@ -52,18 +52,15 @@ HDFS Event Log
 
 已验证项：
 
-- 全模块已用 JDK 21 执行 `mvn -q test` 通过。
+- 全模块已用 JDK 21 执行 `mvn -q clean package` / `mvn -q test` 通过，生产 class major version 验证为 52（Java 8）。
 - analyzer、predictor、advisor、CoreTimeline、规则负例、LLM JSON 解析与端到端报告渲染相关测试已通过。
 - monitor 的争用受限分类、瓶颈聚类、队列级建议、HTML/JSON 契约测试已通过。
 
-仍需在可访问 Maven Central 的机器上首编验证：
-
-- 当前环境已能编译 Spark/Hadoop 相关类；生产集群首次部署前仍需用目标 Spark 3.5.1 发行版做一次 `mvn -q -DskipTests package`。
-- 触及 Spark 内部 UI/API 的代码仍保留 `// VERIFY@3.5.1` 标注，升级 Spark patch 版本时需复核。
+生产集群首次部署前建议用目标 Spark 3.5.1 发行版再做一次 `mvn -q -DskipTests package`。触及 Spark 内部 UI/API 的代码仍保留 `// VERIFY@3.5.1` 标注，升级 Spark patch 版本时需复核。
 
 ## 构建
 
-本开发沙箱无法访问 Maven Central，因此不能在这里首次下载 Spark/Hadoop 依赖并完成 Maven 编译。请在可访问 Maven Central 的主机上构建：
+使用 JDK 21 构建，生产源码按 Java 8 release 编译：
 
 ```bash
 mvn -q -DskipTests package
@@ -79,7 +76,7 @@ Spark/Hadoop 依赖为 `provided`，运行时必须从集群 Spark/Hadoop classp
 
 ## CLI 使用
 
-在集群客户端节点上运行。推荐使用仓库内的启动脚本，它会加载集群环境、执行固定 Kerberos 初始化，并添加 Spark 3.5.1 在 JDK 17/21 上回放 event log 所需的 `--add-opens` 参数：
+在集群客户端节点上运行。推荐使用仓库内的启动脚本，它会加载集群环境、执行固定 Kerberos 初始化；在 JDK 9+ 运行时会自动添加 Spark 3.5.1 回放 event log 所需的 `--add-opens` 参数，Java 8 运行时不会添加。
 
 ```bash
 bin/sparkadvisor analyze \
@@ -188,7 +185,7 @@ HTML 报告包含：
   - `source /opt/client/bigdata_env`
   - `kinit -kt /opt/client/keytab/ossuser.keytab ossuser`
   - 使用集群 Spark/Hadoop jar 作为运行时 classpath
-- Spark 3.5.1 在 JDK 17/21 上回放日志需要若干 `--add-opens` 参数；启动脚本和 SHS 部署文档均已列出。
+- Spark 3.5.1 在 JDK 9+ 上回放日志可能需要若干 `--add-opens` 参数；启动脚本会按 JVM 版本条件添加，SHS 部署文档也列出配置方式。
 - `.inprogress` 或被 compaction 的 rolling log 可能缺少尾部事件，SparkAdvisor 会标注 `incomplete=true`，相关预测置信度应按报告提示解读。
 - 队列争用是基于 task 占用率的推断，event log 不直接记录排队等待；FAIR scheduler 或多 pool 场景下应降低归因置信度。
 - AQE 开启时，有效分区数应以运行时 AQE 事件和最终计划为准；报告中的建议会区分 `shuffle.partitions`、`advisoryPartitionSizeInBytes` 与 skew join 相关参数。

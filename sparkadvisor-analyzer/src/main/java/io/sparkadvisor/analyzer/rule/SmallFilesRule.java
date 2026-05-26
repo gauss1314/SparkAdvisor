@@ -57,7 +57,7 @@ public final class SmallFilesRule implements Rule {
                             "raise spark.sql.files.maxPartitionBytes / openCostInBytes to pack more "
                                     + "small files per task",
                             "Lets Spark combine more small files into each scan task.",
-                            "Mitigates symptoms without rewriting data."));
+                            "Mitigates symptoms without rewriting data.")));
 
             findings.add(new Finding(id(), "small-files", Severity.WARN, st.stageId(),
                     explanation, evidence, recs));

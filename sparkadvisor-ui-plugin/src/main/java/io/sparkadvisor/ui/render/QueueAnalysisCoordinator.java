@@ -16,6 +16,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 
@@ -37,6 +38,8 @@ public final class QueueAnalysisCoordinator {
     private final ConcurrentHashMap<String, CompletableFuture<QueueAnalysisResult>> inFlight =
             new ConcurrentHashMap<>();
     private final ExecutorService executor = Executors.newFixedThreadPool(2, daemonFactory());
+    private final ScheduledExecutorService timeoutExecutor =
+            Executors.newSingleThreadScheduledExecutor(daemonFactory());
 
     public QueueAnalysisCoordinator(Configuration hadoopConf) {
         this.hadoopConf = hadoopConf;
@@ -55,7 +58,7 @@ public final class QueueAnalysisCoordinator {
         }
 
         CompletableFuture<QueueAnalysisResult> future = inFlight.computeIfAbsent(snapshot.key(),
-                key -> CompletableFuture.supplyAsync(() -> {
+                key -> withTimeout(CompletableFuture.supplyAsync(() -> {
                     try {
                         QueueAnalysisResult result = analyzer.analyze(path, topN, bucketMs);
                         if (cache.size() >= MAX_CACHED_RESULTS) {
@@ -68,7 +71,7 @@ public final class QueueAnalysisCoordinator {
                     } finally {
                         inFlight.remove(key);
                     }
-                }, executor).orTimeout(ANALYSIS_TIMEOUT_MINUTES, TimeUnit.MINUTES));
+                }, executor), ANALYSIS_TIMEOUT_MINUTES, TimeUnit.MINUTES));
 
         if (future.isDone() && !future.isCompletedExceptionally()) {
             QueueAnalysisResult result = future.get();
@@ -120,6 +123,13 @@ public final class QueueAnalysisCoordinator {
         return "<div class=\"banner warn\">Queue analysis is running in the background. "
                 + "Snapshot size: " + bytes(snapshot.totalBytes())
                 + ". Refresh this tab later to view the cached queue report.</div>";
+    }
+
+    private <T> CompletableFuture<T> withTimeout(CompletableFuture<T> future, long timeout, TimeUnit unit) {
+        timeoutExecutor.schedule(() -> future.completeExceptionally(
+                new RuntimeException("Timed out after " + timeout + " " + unit.toString().toLowerCase())),
+                timeout, unit);
+        return future;
     }
 
     private static ThreadFactory daemonFactory() {

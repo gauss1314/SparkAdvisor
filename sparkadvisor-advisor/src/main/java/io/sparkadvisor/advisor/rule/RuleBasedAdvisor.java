@@ -1,6 +1,7 @@
 package io.sparkadvisor.advisor.rule;
 
 import io.sparkadvisor.advisor.api.TuningAdvisor;
+import io.sparkadvisor.core.analyze.SqlAnalysis;
 import io.sparkadvisor.core.finding.Finding;
 import io.sparkadvisor.core.finding.Recommendation;
 import io.sparkadvisor.core.finding.Severity;
@@ -50,7 +51,7 @@ public final class RuleBasedAdvisor implements TuningAdvisor {
     private String summarize(AnalysisResult r, List<Finding> findings) {
         StringBuilder s = new StringBuilder();
         if (r.targetSql() != null) {
-            var sql = r.targetSql();
+            SqlAnalysis sql = r.targetSql();
             s.append(String.format(
                     "This SQL ran in %d ms; its critical path is %d ms, so up to %.0f%% of the "
                             + "wall clock is potentially removable. ",

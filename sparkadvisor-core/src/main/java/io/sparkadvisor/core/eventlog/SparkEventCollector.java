@@ -21,6 +21,10 @@ import org.apache.spark.scheduler.SparkListenerStageSubmitted;
 import org.apache.spark.scheduler.SparkListenerExecutorAdded;
 import org.apache.spark.scheduler.SparkListenerExecutorRemoved;
 import org.apache.spark.scheduler.SparkListenerTaskEnd;
+import org.apache.spark.scheduler.StageInfo;
+import org.apache.spark.executor.TaskMetrics;
+import org.apache.spark.sql.execution.ui.SparkListenerSQLExecutionEnd;
+import org.apache.spark.sql.execution.ui.SparkListenerSQLExecutionStart;
 
 import io.sparkadvisor.core.model.ExecutorEvent;
 
@@ -163,7 +167,7 @@ public final class SparkEventCollector extends SparkListener {
 
     @Override
     public void onStageSubmitted(SparkListenerStageSubmitted e) {
-        var info = e.stageInfo();
+        StageInfo info = e.stageInfo();
         StageBuilder b = stages.computeIfAbsent(info.stageId(), id -> new StageBuilder());
         b.stageId = info.stageId();
         b.attemptId = info.attemptNumber();              // VERIFY@3.5.1 (attemptNumber vs attemptId)
@@ -175,7 +179,7 @@ public final class SparkEventCollector extends SparkListener {
 
     @Override
     public void onStageCompleted(SparkListenerStageCompleted e) {
-        var info = e.stageInfo();
+        StageInfo info = e.stageInfo();
         StageBuilder b = stages.computeIfAbsent(info.stageId(), id -> new StageBuilder());
         b.stageId = info.stageId();
         b.numTasks = info.numTasks();
@@ -203,7 +207,7 @@ public final class SparkEventCollector extends SparkListener {
                         finish));
             }
         }
-        var m = e.taskMetrics();
+        TaskMetrics m = e.taskMetrics();
         if (m == null) {
             return; // failed/speculative task without metrics
         }
@@ -242,7 +246,7 @@ public final class SparkEventCollector extends SparkListener {
     private void handleSqlStart(SparkListenerEvent event) {
         // Accessed via the spark-sql type. VERIFY@3.5.1 field names:
         // executionId:Long, description:String, physicalPlanDescription:String, time:Long
-        var s = SqlEventAccess.sqlExecutionStart(event);
+        SparkListenerSQLExecutionStart s = SqlEventAccess.sqlExecutionStart(event);
         SqlExecBuilder b = sqlExecs.computeIfAbsent(s.executionId(), SqlExecBuilder::new);
         b.description = s.description();
         b.physicalPlanText = s.physicalPlanDescription();
@@ -251,7 +255,7 @@ public final class SparkEventCollector extends SparkListener {
     }
 
     private void handleSqlEnd(SparkListenerEvent event) {
-        var s = SqlEventAccess.sqlExecutionEnd(event);
+        SparkListenerSQLExecutionEnd s = SqlEventAccess.sqlExecutionEnd(event);
         SqlExecBuilder b = sqlExecs.computeIfAbsent(s.executionId(), SqlExecBuilder::new);
         b.endTime = s.time();
     }

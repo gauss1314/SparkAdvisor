@@ -47,8 +47,8 @@ class ReportPipelineTest {
         conf.put("spark.executor.instances", "4");
         conf.put("spark.executor.cores", "2");
         return new ApplicationModel("app-demo", "Demo", 0L, 17000L, false, conf,
-                java.util.Arrays.asList(sql), java.util.Arrays.asList(job), java.util.Arrays.asList(skewedStage()), java.util.new java.util.ArrayList<>(),
-                java.util.new java.util.ArrayList<>());
+                java.util.Arrays.asList(sql), java.util.Arrays.asList(job), java.util.Arrays.asList(skewedStage()),
+                new java.util.ArrayList<>(), new java.util.ArrayList<>());
     }
 
     @Test

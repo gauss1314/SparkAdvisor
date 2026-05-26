@@ -10,6 +10,7 @@ import io.sparkadvisor.report.json.JsonReportWriter;
 import io.sparkadvisor.report.model.AnalysisResult;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -37,7 +38,7 @@ public final class HtmlReportWriter {
     private final JsonReportWriter jsonWriter = new JsonReportWriter();
 
     public void write(AnalysisResult result, Path out) throws IOException {
-        Files.writeString(out, render(result, isChineseOutput(out)));
+        Files.write(out, render(result, isChineseOutput(out)).getBytes(StandardCharsets.UTF_8));
     }
 
     public String render(AnalysisResult r) throws IOException {
@@ -106,7 +107,7 @@ public final class HtmlReportWriter {
     // ---- Sections --------------------------------------------------------------
 
     private void appOverview(StringBuilder h, AnalysisResult r, boolean zh) {
-        var a = r.app();
+        AnalysisResult.AppSummary a = r.app();
         h.append("<section><h2>").append(t(zh, "Application", "应用概览"))
                 .append("</h2><div class=\"grid\">");
         kv(h, t(zh, "Name", "名称"), esc(a.appName()));
@@ -356,7 +357,7 @@ public final class HtmlReportWriter {
 
     private void aiPlaceholder(StringBuilder h, AnalysisResult r, boolean zh) {
         h.append("<section><h2>").append(t(zh, "Tuning advice", "调优建议")).append("</h2>");
-        var advice = r.aiAdvice();
+        AnalysisResult.AiAdvice advice = r.aiAdvice();
         if (advice == null) {
             h.append("<p class=\"muted\">")
                     .append(t(zh,
@@ -429,55 +430,55 @@ public final class HtmlReportWriter {
     }
 
     private String css() {
-        return """
-            :root{--bg:#0f1419;--panel:#161b22;--line:#2b333d;--fg:#e6edf3;--muted:#8b949e;
-              --accent:#4a9eff;--warn:#f0a020;--crit:#f04848;--ideal:#3fb950;--critical:#4a9eff;}
-            *{box-sizing:border-box}
-            body{margin:0;background:var(--bg);color:var(--fg);
-              font:14px/1.5 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
-            header{padding:20px 24px;border-bottom:1px solid var(--line)}
-            h1{margin:0;font-size:20px;letter-spacing:.5px}
-            h2{font-size:15px;margin:0 0 12px;color:var(--accent)}
-            .sub{color:var(--muted);font-size:12px;margin-top:4px}
-            section{padding:18px 24px;border-bottom:1px solid var(--line)}
-            .banner{padding:10px 24px;font-size:13px}
-            .banner.warn{background:rgba(240,160,32,.12);color:var(--warn);
-              border-bottom:1px solid var(--line)}
-            .grid{display:flex;flex-wrap:wrap;gap:10px 28px}
-            .kv{display:flex;flex-direction:column}.kv .k{color:var(--muted);font-size:11px}
-            .kv .v{font-size:15px;font-weight:600}
-            .cards{display:flex;flex-wrap:wrap;gap:12px}
-            .card{background:var(--panel);border:1px solid var(--line);border-radius:8px;
-              padding:12px 16px;min-width:140px}
-            .card.warn{border-color:var(--warn)}
-            .card-v{font-size:20px;font-weight:700}.card-l{color:var(--muted);font-size:12px}
-            table{width:100%;border-collapse:collapse;font-size:13px}
-            th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line)}
-            th{color:var(--muted);font-weight:600}
-            tr.row-warn td{background:rgba(240,72,72,.08)}
-            .muted{color:var(--muted)}
-            pre{background:var(--panel);border:1px solid var(--line);border-radius:6px;
-              padding:12px;overflow:auto;font-size:12px;max-height:360px}
-            pre.sql{white-space:pre-wrap}
-            details summary{cursor:pointer;color:var(--accent);margin:6px 0}
-            .bars{max-width:100%;font-size:12px}
-            .bar-label{fill:var(--muted)}.bar-val{fill:var(--fg)}
-            .bar-actual{fill:var(--crit)}.bar-critical{fill:var(--critical)}.bar-ideal{fill:var(--ideal)}
-            .finding{background:var(--panel);border:1px solid var(--line);border-left-width:3px;
-              border-radius:6px;padding:10px 14px;margin-bottom:10px}
-            .finding.critical{border-left-color:var(--crit)}
-            .finding.warn{border-left-color:var(--warn)}
-            .finding.info{border-left-color:var(--accent)}
-            .sev{font-size:11px;font-weight:700;padding:1px 6px;border-radius:4px}
-            .sev.critical{background:var(--crit);color:#fff}
-            .sev.warn{background:var(--warn);color:#000}
-            .sev.info{background:var(--accent);color:#fff}
-            .rec{margin-top:6px;font-size:13px}
-            .pred{background:var(--panel);border:1px solid var(--line);border-radius:6px;
-              padding:10px 14px;margin-bottom:12px}
-            .pred h3{font-size:13px;margin:0 0 6px;color:var(--fg)}
-            code{background:rgba(255,255,255,.06);padding:1px 5px;border-radius:4px;font-size:12px}
-            ul.assume{margin:6px 0;padding-left:18px;color:var(--muted);font-size:12px}
-            """;
+        return String.join("\n",
+                ":root{--bg:#0f1419;--panel:#161b22;--line:#2b333d;--fg:#e6edf3;--muted:#8b949e;",
+                "  --accent:#4a9eff;--warn:#f0a020;--crit:#f04848;--ideal:#3fb950;--critical:#4a9eff;}",
+                "*{box-sizing:border-box}",
+                "body{margin:0;background:var(--bg);color:var(--fg);",
+                "  font:14px/1.5 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}",
+                "header{padding:20px 24px;border-bottom:1px solid var(--line)}",
+                "h1{margin:0;font-size:20px;letter-spacing:.5px}",
+                "h2{font-size:15px;margin:0 0 12px;color:var(--accent)}",
+                ".sub{color:var(--muted);font-size:12px;margin-top:4px}",
+                "section{padding:18px 24px;border-bottom:1px solid var(--line)}",
+                ".banner{padding:10px 24px;font-size:13px}",
+                ".banner.warn{background:rgba(240,160,32,.12);color:var(--warn);",
+                "  border-bottom:1px solid var(--line)}",
+                ".grid{display:flex;flex-wrap:wrap;gap:10px 28px}",
+                ".kv{display:flex;flex-direction:column}.kv .k{color:var(--muted);font-size:11px}",
+                ".kv .v{font-size:15px;font-weight:600}",
+                ".cards{display:flex;flex-wrap:wrap;gap:12px}",
+                ".card{background:var(--panel);border:1px solid var(--line);border-radius:8px;",
+                "  padding:12px 16px;min-width:140px}",
+                ".card.warn{border-color:var(--warn)}",
+                ".card-v{font-size:20px;font-weight:700}.card-l{color:var(--muted);font-size:12px}",
+                "table{width:100%;border-collapse:collapse;font-size:13px}",
+                "th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line)}",
+                "th{color:var(--muted);font-weight:600}",
+                "tr.row-warn td{background:rgba(240,72,72,.08)}",
+                ".muted{color:var(--muted)}",
+                "pre{background:var(--panel);border:1px solid var(--line);border-radius:6px;",
+                "  padding:12px;overflow:auto;font-size:12px;max-height:360px}",
+                "pre.sql{white-space:pre-wrap}",
+                "details summary{cursor:pointer;color:var(--accent);margin:6px 0}",
+                ".bars{max-width:100%;font-size:12px}",
+                ".bar-label{fill:var(--muted)}.bar-val{fill:var(--fg)}",
+                ".bar-actual{fill:var(--crit)}.bar-critical{fill:var(--critical)}.bar-ideal{fill:var(--ideal)}",
+                ".finding{background:var(--panel);border:1px solid var(--line);border-left-width:3px;",
+                "  border-radius:6px;padding:10px 14px;margin-bottom:10px}",
+                ".finding.critical{border-left-color:var(--crit)}",
+                ".finding.warn{border-left-color:var(--warn)}",
+                ".finding.info{border-left-color:var(--accent)}",
+                ".sev{font-size:11px;font-weight:700;padding:1px 6px;border-radius:4px}",
+                ".sev.critical{background:var(--crit);color:#fff}",
+                ".sev.warn{background:var(--warn);color:#000}",
+                ".sev.info{background:var(--accent);color:#fff}",
+                ".rec{margin-top:6px;font-size:13px}",
+                ".pred{background:var(--panel);border:1px solid var(--line);border-radius:6px;",
+                "  padding:10px 14px;margin-bottom:12px}",
+                ".pred h3{font-size:13px;margin:0 0 6px;color:var(--fg)}",
+                "code{background:rgba(255,255,255,.06);padding:1px 5px;border-radius:4px;font-size:12px}",
+                "ul.assume{margin:6px 0;padding-left:18px;color:var(--muted);font-size:12px}",
+                "");
     }
 }

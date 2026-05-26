@@ -12,7 +12,7 @@
 
 ### 1.1 一句话定位
 
-SparkAdvisor 是一个以 **Java 21** 为主实现的、面向 **Spark 3.5** 的 Event Log 离线分析与调优顾问：直接读取 HDFS 上归档的 event log，精确计算关键路径与硬指标，基于规则给出调优预测，输出 HTML/JSON 报告，并可作为 Spark UI 的一个轻量页面入口按 **StatementID** 查看结论。
+SparkAdvisor 是一个以 **Java 8 运行时兼容** 为目标、面向 **Spark 3.5** 的 Event Log 离线分析与调优顾问：直接读取 HDFS 上归档的 event log，精确计算关键路径与硬指标，基于规则给出调优预测，输出 HTML/JSON 报告，并可作为 Spark UI 的一个轻量页面入口按 **StatementID** 查看结论。
 
 ### 1.2 功能需求映射
 
@@ -25,7 +25,7 @@ SparkAdvisor 是一个以 **Java 21** 为主实现的、面向 **Spark 3.5** 的
 
 ### 1.3 明确的范围约束（Non-Goals）
 
-- **技术栈**：以 **Java 21** 为主语言（用其 records / sealed / pattern matching / virtual threads 等特性）。**不使用 Scala 编写**，但允许以 `provided` 方式依赖 Spark 的 Scala 产物（在 JVM 上从 Java 调用）。**必要时可使用 JS/HTML/CSS** 等前端技术栈（仅用于报告与 UI 页面的呈现，见 §9/§11）。
+- **技术栈**：生产源码按 **Java 8** 兼容编写，并使用 JDK 21 编译为 Java 8 bytecode（`maven.compiler.release=8`）。测试源码可使用 JDK 21 语法（`maven.compiler.testRelease=21`）。**不使用 Scala 编写**，但允许以 `provided` 方式依赖 Spark 的 Scala 产物（在 JVM 上从 Java 调用）。**必要时可使用 JS/HTML/CSS** 等前端技术栈（仅用于报告与 UI 页面的呈现，见 §9/§11）。
 - **前端**：能力极简，优先后端。不引入前端工程化构建链（webpack/vite 等）；页面用服务端模板渲染的静态 HTML + 必要的原生 JS/CSS，图表可选 CDN 轻量库或内联 SVG。
 - **不做**：实时流式监控、跨应用聚合大盘、成本（$）核算、写回集群执行优化。这些留给后续版本或交给现成工具（DataFlint 等）。
 - **不重复造轮子**：JSON 反序列化复用 Spark `JsonProtocol`，不手写事件 schema（详见 §4）。
@@ -90,7 +90,7 @@ flowchart TB
 ## 3. 模块划分（Maven 多模块）
 
 ```
-sparkadvisor/                       # 父 POM，统一依赖与版本，maven.compiler.release=21
+sparkadvisor/                       # 父 POM，统一依赖与版本，maven.compiler.release=8
 ├── sparkadvisor-core/              # 读取、解析、领域模型
 ├── sparkadvisor-analyzer/          # 指标聚合 + 关键路径 + 规则引擎
 ├── sparkadvisor-predictor/         # 规则预测（shuffle/executor 成本模型）
@@ -100,7 +100,7 @@ sparkadvisor/                       # 父 POM，统一依赖与版本，maven.co
 └── sparkadvisor-ui-plugin/         # Spark/History UI tab 集成
 ```
 
-> **JDK 基线**：Java 21。父 POM 设 `maven.compiler.release=21`。鼓励用 `Record 类型` 表达领域模型与不可变结果对象、`sealed interface` 表达事件/Finding 类型、`switch` 模式匹配做事件分发、虚拟线程并行解析多个 event log 文件。Spark 3.5 官方支持在 Java 17/21 上运行，留意 Spark 对 JVM 的 `--add-opens` 启动参数要求（见 §10/§13）。
+> **JDK 基线**：生产产物兼容 Java 8。父 POM 设 `maven.compiler.release=8`、`maven.compiler.testRelease=21`；生产代码不可使用 `record`、`sealed`、switch 表达式、text block、`var`、`Path.of` 等 Java 9+ 语法/API。Spark 3.5 在 JDK 9+ 上运行时需留意 `--add-opens` 启动参数要求（见 §10/§13），Java 8 不使用该参数。
 
 | 模块 | 关键依赖 | 依赖范围 | 说明 |
 | --- | --- | --- | --- |
@@ -244,7 +244,7 @@ classDiagram
 
 **内存策略**：`Stage` 不保留每个 task 的原始记录，而是**在 `onTaskEnd` 时增量喂给一个分位数估计器**（如 t-digest 或固定桶直方图），最终得到 `Distribution`。这样即使百万级 task 也只占常数内存。原始 task 仅在 `--keep-raw` 调试模式下保留。
 
-**Java 21 实现建议**：上述只读结果对象（`Distribution`、`SqlExecution`、`Finding`、各类 `Prediction`、`AnalysisResult` 等）用 `Record 类型` 表达，天然不可变且自带 equals/hashCode，便于缓存与 JSON 序列化；`Finding`/事件类别等封闭集合用 `sealed interface` + Record 类型 实现，配合 `switch` 模式匹配做分发。注意 Jackson 对 Record 类型的支持需 2.12+（Spark 3.5 自带版本已满足）。
+**Java 8 实现约束**：上述只读结果对象（`Distribution`、`SqlExecution`、`Finding`、各类 `Prediction`、`AnalysisResult` 等）用普通 final 类表达（final 字段 + 构造器 + record 风格访问器）。Jackson JSON writer 按字段可见性序列化这些 POJO，以保持 JSON 契约稳定。
 
 ---
 
@@ -408,7 +408,7 @@ classDiagram
 
 ## 10. CLI 设计（F1 驱动外壳）
 
-picocli 实现，fat-jar 运行，目标 JDK 21。
+picocli 实现，fat-jar 运行，目标 Java 8 bytecode。
 
 ```
 java -jar sparkadvisor-cli.jar analyze \
@@ -434,7 +434,7 @@ set -euo pipefail
 source /opt/client/bigdata_env
 # 2) 用固定 keytab 获取 TGT（票据进入 ticket cache）
 kinit -kt /opt/client/keytab/ossuser.keytab ossuser
-# 3) 启动 CLI（Spark 3.5 在 JDK 21 上需放开模块封装）
+# 3) 启动 CLI（JDK 9+ 运行 Spark 3.5 时需放开模块封装；Java 8 不加）
 exec java \
   --add-opens=java.base/java.lang=ALL-UNNAMED \
   --add-opens=java.base/java.nio=ALL-UNNAMED \
@@ -447,7 +447,7 @@ exec java \
 
 - 代码侧只需正常使用 Hadoop `FileSystem`/`UserGroupInformation`，后者会自动从 `kinit` 写入的 ticket cache 读取凭据，**无需**在 CLI 暴露 keytab/principal 参数。
 - `HADOOP_CONF_DIR` 由 `source /opt/client/bigdata_env` 设置，`core-site.xml`/`hdfs-site.xml` 随之生效；如脚本未导出，允许通过 `--hadoop-conf-dir` 兜底指定。
-- `--add-opens` 是 Spark 3.5 在 JDK 17/21 上回放/反射访问内部类所必需的；缺失会在解析阶段抛 `InaccessibleObjectException`（见 §13）。
+- `--add-opens` 是 Spark 3.5 在 JDK 9+ 上回放/反射访问内部类时可能需要的；Java 8 不支持也不需要。缺失会在 JDK 9+ 解析阶段抛 `InaccessibleObjectException`（见 §13）。
 - 票据过期：长任务可在脚本里加 `kinit -R` 续期或重跑 `kinit`；CLI 属于短时离线分析，一般单次票据足够。
 
 ---
@@ -479,7 +479,7 @@ sequenceDiagram
 
 在 Spark UI 挂自定义 tab 用的是 **Spark 内部/开发者 API**（`SparkUI.attachTab` + `WebUITab`/`WebUIPage`，多为 `private[spark]`），跨版本有破坏风险。按复杂度分期：
 
-- **阶段一（最简，已规划于 M1/M2）**：不碰 Spark UI。CLI 产出 HTML + 一个**独立的轻量内嵌 HTTP 服务**（如 Spark 自带的 Jetty 或独立 `com.sun.net.httpserver`，可配合 JDK 21 虚拟线程承接请求），按 StatementID 提供 `/analysis?statementId=xxx` 页面。完全满足“按 StatementID 看结论”的诉求，且零侵入。
+- **阶段一（最简，已规划于 M1/M2）**：不碰 Spark UI。CLI 产出 HTML + 一个**独立的轻量内嵌 HTTP 服务**（如 Spark 自带的 Jetty 或独立 `com.sun.net.httpserver`），按 StatementID 提供 `/analysis?statementId=xxx` 页面。完全满足“按 StatementID 看结论”的诉求，且零侵入。
 - **History Server tab（M3，目标接入方式）**：在常驻的 History Server 进程内挂 tab，服务**已结束、日志已归档**的应用——这正是本项目的核心场景。需对接 SHS 的 UI 扩展机制与 KVStore，DataFlint 即走此路；最重，固定 Spark 小版本以控风险。
 
 > **运行中应用也走 History Server（队列监控场景）**：History Server 默认会列出"运行中/未完成"的应用（读 `.inprogress` 日志，标为 incomplete，按 `spark.history.fs.update.interval` 间歇刷新）。因此对长驻查询队列的实时性要求不高的监控，可**直接用 SHS tab 读运行中 app 的 `.inprogress`，零侵入、不碰生产 Driver**。这是队列分析（见独立文档 `SparkAdvisor-monitor-design.md`）的 UI 入口，与 M3 的 tab 复用同一套 `AppHistoryServerPlugin`。详见该文档。
@@ -516,7 +516,7 @@ flowchart LR
 ## 13. 关键技术难点与注意事项（给 Code Agent 的清单）
 
 1. **Scala 互操作**：在 `core` 内统一把 Scala `Option`/集合转 Java 类型，上层不感知 Scala。
-2. **JDK 21 运行 Spark**：Spark 3.5 在 Java 17/21 上回放/反射需要启动加 `--add-opens`（见 §10.1）。封装在 `bin/sparkadvisor` 脚本里；缺失会抛 `InaccessibleObjectException`。同时确认所用 Spark/Hadoop 依赖版本对 JDK 21 兼容。
+2. **JDK 9+ 运行 Spark**：Spark 3.5 在 Java 9+ 上回放/反射可能需要启动加 `--add-opens`（见 §10.1）。封装在 `bin/sparkadvisor` 脚本里并按 JVM 版本条件添加；Java 8 不加。缺失会抛 `InaccessibleObjectException`。同时确认所用 Spark/Hadoop 依赖版本对运行 JDK 兼容。
 3. **StatementID 提取**：SQL 原文字段不固定，按 `description→details→physicalPlanDescription` 顺序尝试，正则只认文本最前部的 `/* ... */`；准备“带注释/不带/注释在中部”单测。
 4. **流式与内存**：百万级 task 必须增量分位数（t-digest/直方图），禁止全量驻留。
 5. **AQE**：有效分区数/最终计划来自运行时事件，不要用静态配置反推（§8.2）。
@@ -543,7 +543,7 @@ flowchart LR
 ```
 sparkadvisor/
 ├── pom.xml                  # release=21
-├── bin/sparkadvisor         # 启动脚本：source bigdata_env + kinit + java --add-opens
+├── bin/sparkadvisor         # 启动脚本：source bigdata_env + kinit + JDK 9+ 条件追加 --add-opens
 ├── sparkadvisor-core/       src/main/java/.../core/{io,parse,model,locate}   # locate=StatementIdExtractor/SqlLocator
 ├── sparkadvisor-analyzer/   src/main/java/.../analyzer/{metric,criticalpath,rule}
 ├── sparkadvisor-predictor/  src/main/java/.../predictor/{shuffle,executor,costmodel}

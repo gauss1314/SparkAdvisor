@@ -5,11 +5,16 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.time.Duration;
+import org.apache.http.client.config.RequestConfig;
+import org.apache.http.client.methods.CloseableHttpResponse;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.entity.ContentType;
+import org.apache.http.entity.StringEntity;
+import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.impl.client.HttpClients;
+import org.apache.http.util.EntityUtils;
+
+import java.nio.charset.StandardCharsets;
 
 /**
  * {@link LlmProvider} for MiniMax text models, defaulting to MiniMax-M2.5.
@@ -33,10 +38,11 @@ public final class MinimaxLlmProvider implements LlmProvider {
     private static final int MAX_TOKENS = 1500;
 
     private final ObjectMapper mapper = new ObjectMapper();
-    private final HttpClient http;
+    private final CloseableHttpClient http;
     private final String apiKey;
     private final String model;
     private final String baseUrl;
+    private final RequestConfig requestConfig;
 
     public MinimaxLlmProvider() {
         this(System.getenv("MINIMAX_API_KEY"),
@@ -48,8 +54,13 @@ public final class MinimaxLlmProvider implements LlmProvider {
         this.apiKey = apiKey;
         this.model = (model == null || model.trim().isEmpty()) ? DEFAULT_MODEL : model;
         this.baseUrl = (baseUrl == null || baseUrl.trim().isEmpty()) ? DEFAULT_BASE : baseUrl;
-        this.http = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(15))
+        this.requestConfig = RequestConfig.custom()
+                .setConnectTimeout(15_000)
+                .setConnectionRequestTimeout(15_000)
+                .setSocketTimeout(60_000)
+                .build();
+        this.http = HttpClients.custom()
+                .setDefaultRequestConfig(requestConfig)
                 .build();
     }
 
@@ -64,20 +75,24 @@ public final class MinimaxLlmProvider implements LlmProvider {
             throw new IllegalStateException("No MiniMax API key (set MINIMAX_API_KEY)");
         }
         String body = buildRequestBody(systemPrompt, userPrompt);
-        HttpRequest req = HttpRequest.newBuilder()
-                .uri(URI.create(baseUrl))
-                .timeout(Duration.ofSeconds(60))
-                .header("content-type", "application/json")
-                .header("authorization", "Bearer " + apiKey)
-                .POST(HttpRequest.BodyPublishers.ofString(body))
-                .build();
+        HttpPost req = new HttpPost(baseUrl);
+        req.setConfig(requestConfig);
+        req.setHeader("content-type", "application/json");
+        req.setHeader("authorization", "Bearer " + apiKey);
+        req.setEntity(new StringEntity(body,
+                ContentType.APPLICATION_JSON.withCharset(StandardCharsets.UTF_8)));
 
-        HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
-        if (resp.statusCode() / 100 != 2) {
-            throw new RuntimeException("MiniMax API HTTP " + resp.statusCode() + ": "
-                    + truncate(resp.body()));
+        try (CloseableHttpResponse resp = http.execute(req)) {
+            int status = resp.getStatusLine().getStatusCode();
+            String respBody = resp.getEntity() == null
+                    ? ""
+                    : EntityUtils.toString(resp.getEntity(), StandardCharsets.UTF_8);
+            if (status / 100 != 2) {
+                throw new RuntimeException("MiniMax API HTTP " + status + ": "
+                        + truncate(respBody));
+            }
+            return extractText(respBody);
         }
-        return extractText(resp.body());
     }
 
     private String buildRequestBody(String system, String user) {

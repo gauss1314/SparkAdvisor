@@ -4,12 +4,14 @@ import io.sparkadvisor.core.EventLogAnalyzer;
 import io.sparkadvisor.core.model.ApplicationModel;
 import io.sparkadvisor.monitor.aggregate.QueueAggregator;
 import io.sparkadvisor.monitor.aggregate.QueueAnalysisResult;
+import io.sparkadvisor.monitor.collect.QuerySample;
 import io.sparkadvisor.monitor.collect.QuerySeriesCollector;
 import io.sparkadvisor.monitor.contention.ContentionTimeline;
 
 import org.apache.hadoop.conf.Configuration;
 
 import java.io.IOException;
+import java.util.List;
 
 /**
  * Monitor-module facade: event-log path to queue-level analysis result.
@@ -41,7 +43,7 @@ public final class QueueAnalyzer {
     public QueueAnalysisResult analyze(ApplicationModel app, String sourcePath, int topN, long bucketMs) {
         int normalizedTopN = Math.max(1, topN);
         long normalizedBucketMs = Math.max(60_000L, bucketMs);
-        var samples = new QuerySeriesCollector(app, normalizedTopN).collect(app);
+        List<QuerySample> samples = new QuerySeriesCollector(app, normalizedTopN).collect(app);
         long windowStart = samples.stream()
                 .mapToLong(s -> s.startTime() > 0L ? s.startTime() : app.startTime())
                 .filter(v -> v > 0L)

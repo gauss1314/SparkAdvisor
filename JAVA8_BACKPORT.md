@@ -1,37 +1,25 @@
-# Java 8 Backport Analysis (Built with JDK 21)
+# Java 8 Backport Status (Built with JDK 21)
 
-## 结论（先说结论）
+## 结论
 
-在 **JDK 21 编译环境** 下，不能把一个大量使用 **Java 21 语法**（如 `Record 类型`、switch 表达式 `case x =>` 等）的源码，直接编译成可运行于 Java 8 的产物。
+当前主产物已改为 **JDK 21 编译、Java 8 bytecode 运行**：
 
-原因是：
+- 父 POM：`maven.compiler.release=8`
+- 测试源码：`maven.compiler.testRelease=21`
+- CLI fat-jar 与 SHS 插件 jar：Spark/Hadoop 仍为 `provided`
+- LLM HTTP 调用：使用 Apache HttpClient `4.5.14`，不再使用 Java 11 `java.net.http`
 
-1. `--release 8` 会同时约束 **语法** 与 **可用标准库 API**。
-2. Java 21 语法在 `--release 8` 下会直接语法报错。
-3. 即便只改字节码目标版本，不改源码语法，也无法通过 javac 前端语法检查。
+## 已修复的问题
 
-因此要产出 Java 8 运行包，必须做**源码级回迁**，不仅是 POM 调整。
+- 生产源码中的 `record`/`sealed` 回迁为普通 final 类后，补齐遗漏的 Java 8 语法修复。
+- 替换 `var`、text block、`Path.of`、`Files.writeString`、`CompletableFuture.orTimeout`、`URLEncoder.encode(String, Charset)` 等 Java 9+ API/语法。
+- 修复上一次提交遗留的规则类语法错误与漏返回值。
+- Jackson 改为按字段序列化 POJO，保持 `AnalysisResult` / `QueueAnalysisResult` JSON 契约可输出。
+- `bin/sparkadvisor` 改为按 JVM 版本条件添加 `--add-opens`，避免 Java 8 运行时报不支持参数。
 
-## 当前仓库中的主要阻塞点
+## 验证
 
-项目存在大量 Java 16+ 语法：
-
-- `Record 类型`
-- switch 表达式箭头语法（`case ... =>`）
-
-这些语法在 Java 8 目标下都不可用，需改为 Java 8 可编译写法（POJO + 传统 switch 等）。
-
-## 建议迁移路径
-
-1. **先恢复可持续构建（本次已做）**：保持 `maven.compiler.release=21`，确保主干可编译。
-2. **分模块回迁源码**（按 `core -> analyzer/predictor -> report -> advisor/monitor -> cli/ui-plugin` 顺序）：
-   - `Record 类型` 改为普通类（final 字段 + 构造器 + getter + equals/hashCode/toString）。
-   - switch 表达式改为传统 switch 语句。
-   - 避免使用 Java 9+ API。
-3. 每完成一批回迁，再切一次 `--release 8` 验证，直到全量通过。
-
-## 为什么这次不继续“硬切 release=8”
-
-上一次改成 `--release 8` 后，你已经在实际编译中看到语法报错；这与上述语言规则一致。
-
-所以本次修正把编译目标恢复到 21，避免仓库处于“必然无法编译”的状态。后续如需我继续，我可以直接开始第一批源码回迁（先从 `sparkadvisor-core` 的 value-type 开始）。
+- `mvn -q clean package`
+- `mvn -q test`
+- `target/classes` 生产类 major version 全部为 `52`
+- `sparkadvisor-cli/target/sparkadvisor-cli.jar` 和 `sparkadvisor-ui-plugin/target/sparkadvisor-ui-plugin.jar` 中非 multi-release class 均不高于 major version `52`

@@ -14,6 +14,7 @@ import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.List;
 import java.util.concurrent.Callable;
 
@@ -95,7 +96,7 @@ public final class AnalyzeCommand implements Callable<Integer> {
         }
 
         String fmt = format == null ? "html" : format.toLowerCase();
-        Path outPath = Path.of(out != null ? out : "report." + fmt);
+        Path outPath = Paths.get(out != null ? out : "report." + fmt);
         if ("json".equals(fmt)) {
             new JsonReportWriter().write(result, outPath);
         } else if ("html".equals(fmt)) {

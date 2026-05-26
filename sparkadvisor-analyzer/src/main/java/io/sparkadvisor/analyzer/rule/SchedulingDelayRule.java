@@ -51,7 +51,7 @@ public final class SchedulingDelayRule implements Rule {
                             "warm up executors (raise spark.dynamicAllocation.minExecutors) "
                                     + "or pre-allocate resources",
                             "Cold-start executor acquisition delays the first tasks.",
-                            "Trades idle capacity for lower latency."));
+                            "Trades idle capacity for lower latency.")));
 
             findings.add(new Finding(id(), "scheduling", Severity.INFO, st.stageId(),
                     explanation, evidence, recs));

@@ -2,7 +2,7 @@
 
 > 本文档面向 **Claude Code 等 Code Agent**，作为 `sparkadvisor-monitor` 模块的实现蓝图。
 > 它是主项目（见 `SparkAdvisor-design.md` 与仓库 `CLAUDE.md`）的**上层延伸**：把"单条 SQL 事后诊断"扩展为"长驻查询队列的跨 SQL 聚合分析"。
-> 约定与主项目一致：Java 21、Spark 3.5.1、Spark/Hadoop 为 `provided`、复用 `core/analyzer/predictor/report` 全部能力、不手写事件 schema、Spark 内部 API 标 `// VERIFY@3.5.1`。
+> 约定与主项目一致：生产产物兼容 Java 8（JDK 21 编译）、Spark 3.5.1、Spark/Hadoop 为 `provided`、复用 `core/analyzer/predictor/report` 全部能力、不手写事件 schema、Spark 内部 API 标 `// VERIFY@3.5.1`。
 
 ---
 
@@ -262,7 +262,7 @@ java -jar sparkadvisor-cli.jar queue-report \
 
 - 离线批处理，可同步全量解析（无 UI 线程阻塞顾虑）。
 - 典型用法：每天重启后，对上一轮归档日志跑一次，产出"昨日队列健康报告"。
-- 复用 `bin/sparkadvisor` 启动脚本（含 `source bigdata_env` + `kinit` + JDK21 `--add-opens`）。
+- 复用 `bin/sparkadvisor` 启动脚本（含 `source bigdata_env` + `kinit`；JDK 9+ 运行时条件添加 `--add-opens`）。
 
 ---
 

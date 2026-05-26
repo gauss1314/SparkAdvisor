@@ -1,5 +1,7 @@
 package io.sparkadvisor.core.model;
 
+import io.sparkadvisor.core.util.ValueObjects;
+
 import java.util.Objects;
 
 /**
@@ -37,4 +39,5 @@ public final class TaskInterval {
 
     @Override public boolean equals(Object o) { if (this == o) return true; if (!(o instanceof TaskInterval)) return false; TaskInterval that = (TaskInterval) o; return taskId == that.taskId && stageId == that.stageId && stageAttemptId == that.stageAttemptId && launchTime == that.launchTime && finishTime == that.finishTime && Objects.equals(sqlExecutionId, that.sqlExecutionId) && Objects.equals(executorId, that.executorId); }
     @Override public int hashCode() { return Objects.hash(taskId, stageId, stageAttemptId, sqlExecutionId, executorId, launchTime, finishTime); }
+    @Override public String toString(){return ValueObjects.toString(this);}
 }

@@ -1,5 +1,7 @@
 package io.sparkadvisor.ui.render;
 
+import io.sparkadvisor.core.util.Strings;
+
 import org.apache.spark.SparkConf;
 
 /**
@@ -38,14 +40,14 @@ public final class EventLogPathResolver {
 
     /** Path including an attempt id, when present: {@code <logDir>/<appId>_<attemptId>}. */
     public String pathFor(String appId, String attemptId) {
-        if (attemptId == null || attemptId.trim().isEmpty()) {
+        if (Strings.isBlank(attemptId)) {
             return pathFor(appId);
         }
         return pathFor(appId) + "_" + attemptId;
     }
 
     public boolean isConfigured() {
-        return !logDir.trim().isEmpty();
+        return !Strings.isBlank(logDir);
     }
 
     private static String stripTrailingSlash(String s) {

@@ -6,6 +6,7 @@ import io.sparkadvisor.monitor.advisor.QueueAdvisorFactory;
 import io.sparkadvisor.monitor.advisor.QueueLlmAdvisor;
 import io.sparkadvisor.monitor.render.QueueHtmlWriter;
 import io.sparkadvisor.monitor.render.QueueJsonWriter;
+import io.sparkadvisor.core.util.Strings;
 
 import org.apache.hadoop.conf.Configuration;
 import picocli.CommandLine.Command;
@@ -56,7 +57,7 @@ public final class QueueReportCommand implements Callable<Integer> {
     @Override
     public Integer call() throws Exception {
         Configuration conf = new Configuration();
-        if (hadoopConfDir != null && !hadoopConfDir.trim().isEmpty()) {
+        if (!Strings.isBlank(hadoopConfDir)) {
             conf.addResource(new org.apache.hadoop.fs.Path(hadoopConfDir + "/core-site.xml"));
             conf.addResource(new org.apache.hadoop.fs.Path(hadoopConfDir + "/hdfs-site.xml"));
         }
@@ -82,7 +83,7 @@ public final class QueueReportCommand implements Callable<Integer> {
     }
 
     static long parseDurationMs(String value) {
-        if (value == null || value.trim().isEmpty()) {
+        if (Strings.isBlank(value)) {
             return QueueAnalyzer.DEFAULT_BUCKET_MS;
         }
         String v = value.trim().toLowerCase();

@@ -8,6 +8,7 @@ import io.sparkadvisor.core.finding.Finding;
 import io.sparkadvisor.core.model.Job;
 import io.sparkadvisor.core.model.ApplicationModel;
 import io.sparkadvisor.core.model.SqlExecution;
+import io.sparkadvisor.core.util.Java8Collections;
 import io.sparkadvisor.predictor.PredictionService;
 
 import java.util.Comparator;
@@ -41,10 +42,10 @@ public final class QuerySeriesCollector {
                 .map(SqlExecution::executionId)
                 .collect(java.util.stream.Collectors.toCollection(HashSet::new));
 
-        return app.sqlExecutions().stream()
+        return Java8Collections.listCopy(app.sqlExecutions().stream()
                 .sorted(Comparator.comparingLong(SqlExecution::startTime))
                 .map(sql -> sample(app, sql, deepExecutionIds.contains(sql.executionId())))
-                .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
+                .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new)));
     }
 
     private QuerySample sample(ApplicationModel app, SqlExecution sql, boolean deep) {
@@ -63,7 +64,7 @@ public final class QuerySeriesCollector {
 
         List<Finding> findings = deep
                 ? performanceAnalyzer.analyze(analysis, app.conf())
-                : new java.util.ArrayList<>();
+                : Java8Collections.<Finding>listOf();
         PredictionService.Predictions predictions = deep
                 ? predictionService.predict(analysis, app.conf())
                 : null;

@@ -1,6 +1,8 @@
 package io.sparkadvisor.monitor.contention;
 
 import io.sparkadvisor.core.model.TaskInterval;
+import io.sparkadvisor.core.util.Java8Collections;
+import io.sparkadvisor.core.util.ValueObjects;
 import io.sparkadvisor.monitor.collect.QuerySample;
 
 import java.util.ArrayList;
@@ -31,10 +33,10 @@ public final class ContentionTimeline {
                                Map<Long, QueryContention> queryContention,
                                List<Window> hotspots) {
         this.totalCores = Math.max(1, totalCores);
-        this.segments = new java.util.ArrayList<>(segments);
-        this.bucketUtilization = new java.util.ArrayList<>(bucketUtilization);
-        this.queryContention = new java.util.LinkedHashMap<>(queryContention);
-        this.hotspots = new java.util.ArrayList<>(hotspots);
+        this.segments = Java8Collections.listCopy(segments);
+        this.bucketUtilization = Java8Collections.listCopy(bucketUtilization);
+        this.queryContention = Java8Collections.mapCopy(queryContention);
+        this.hotspots = Java8Collections.listCopy(hotspots);
     }
 
     public static ContentionTimeline from(List<TaskInterval> tasks,
@@ -45,7 +47,7 @@ public final class ContentionTimeline {
                                           long windowEnd) {
         int cores = Math.max(1, totalCores);
         long bucket = Math.max(60_000L, bucketMs);
-        List<TaskInterval> validTasks = tasks == null ? new java.util.ArrayList<>() : tasks.stream()
+        List<TaskInterval> validTasks = tasks == null ? Java8Collections.<TaskInterval>listOf() : tasks.stream()
                 .filter(t -> t.finishTime() > t.launchTime())
                 .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
         if (validTasks.isEmpty()) {
@@ -129,7 +131,7 @@ public final class ContentionTimeline {
                         new QueryContention(q.executionId(), 0.0, 0.0, 0L, false));
             }
         }
-        return new ContentionTimeline(cores, new java.util.ArrayList<>(), buckets, contention, new java.util.ArrayList<>());
+        return new ContentionTimeline(cores, Java8Collections.<Segment>listOf(), buckets, contention, Java8Collections.<Window>listOf());
     }
 
     private static Map<Long, QueryContention> buildQueryContention(List<QuerySample> queries,
@@ -216,13 +218,13 @@ public final class ContentionTimeline {
         return hotspots;
     }
 
-    private static final class Event { private final long time; private final int delta; private final Long sqlExecutionId; Event(long time,int delta,Long sqlExecutionId){this.time=time;this.delta=delta;this.sqlExecutionId=sqlExecutionId;} long time(){return time;} int delta(){return delta;} Long sqlExecutionId(){return sqlExecutionId;} }
+    private static final class Event { private final long time; private final int delta; private final Long sqlExecutionId; Event(long time,int delta,Long sqlExecutionId){this.time=time;this.delta=delta;this.sqlExecutionId=sqlExecutionId;} long time(){return time;} int delta(){return delta;} Long sqlExecutionId(){return sqlExecutionId;} @Override public boolean equals(Object o){return ValueObjects.equalFields(this,o);} @Override public int hashCode(){return ValueObjects.hashFields(this);} @Override public String toString(){return ValueObjects.toString(this);} }
 
-    public static final class Segment { private final long startTime,endTime; private final int busyCores; private final double utilization; public Segment(long startTime,long endTime,int busyCores,double utilization){this.startTime=startTime;this.endTime=endTime;this.busyCores=busyCores;this.utilization=utilization;} public long startTime(){return startTime;} public long endTime(){return endTime;} public int busyCores(){return busyCores;} public double utilization(){return utilization;} }
+    public static final class Segment { private final long startTime,endTime; private final int busyCores; private final double utilization; public Segment(long startTime,long endTime,int busyCores,double utilization){this.startTime=startTime;this.endTime=endTime;this.busyCores=busyCores;this.utilization=utilization;} public long startTime(){return startTime;} public long endTime(){return endTime;} public int busyCores(){return busyCores;} public double utilization(){return utilization;} @Override public boolean equals(Object o){return ValueObjects.equalFields(this,o);} @Override public int hashCode(){return ValueObjects.hashFields(this);} @Override public String toString(){return ValueObjects.toString(this);} }
 
-    public static final class BucketUtilization { private final long bucketStart,bucketEnd; private final double avgUtilization; public BucketUtilization(long bucketStart,long bucketEnd,double avgUtilization){this.bucketStart=bucketStart;this.bucketEnd=bucketEnd;this.avgUtilization=avgUtilization;} public long bucketStart(){return bucketStart;} public long bucketEnd(){return bucketEnd;} public double avgUtilization(){return avgUtilization;} }
+    public static final class BucketUtilization { private final long bucketStart,bucketEnd; private final double avgUtilization; public BucketUtilization(long bucketStart,long bucketEnd,double avgUtilization){this.bucketStart=bucketStart;this.bucketEnd=bucketEnd;this.avgUtilization=avgUtilization;} public long bucketStart(){return bucketStart;} public long bucketEnd(){return bucketEnd;} public double avgUtilization(){return avgUtilization;} @Override public boolean equals(Object o){return ValueObjects.equalFields(this,o);} @Override public int hashCode(){return ValueObjects.hashFields(this);} @Override public String toString(){return ValueObjects.toString(this);} }
 
-    public static final class QueryContention { private final long executionId,ownCoreMs; private final double avgPoolUtilization,ownCoreShare; private final boolean contentionLimited; public QueryContention(long executionId,double avgPoolUtilization,double ownCoreShare,long ownCoreMs,boolean contentionLimited){this.executionId=executionId;this.avgPoolUtilization=avgPoolUtilization;this.ownCoreShare=ownCoreShare;this.ownCoreMs=ownCoreMs;this.contentionLimited=contentionLimited;} public long executionId(){return executionId;} public double avgPoolUtilization(){return avgPoolUtilization;} public double ownCoreShare(){return ownCoreShare;} public long ownCoreMs(){return ownCoreMs;} public boolean contentionLimited(){return contentionLimited;} }
+    public static final class QueryContention { private final long executionId,ownCoreMs; private final double avgPoolUtilization,ownCoreShare; private final boolean contentionLimited; public QueryContention(long executionId,double avgPoolUtilization,double ownCoreShare,long ownCoreMs,boolean contentionLimited){this.executionId=executionId;this.avgPoolUtilization=avgPoolUtilization;this.ownCoreShare=ownCoreShare;this.ownCoreMs=ownCoreMs;this.contentionLimited=contentionLimited;} public long executionId(){return executionId;} public double avgPoolUtilization(){return avgPoolUtilization;} public double ownCoreShare(){return ownCoreShare;} public long ownCoreMs(){return ownCoreMs;} public boolean contentionLimited(){return contentionLimited;} @Override public boolean equals(Object o){return ValueObjects.equalFields(this,o);} @Override public int hashCode(){return ValueObjects.hashFields(this);} @Override public String toString(){return ValueObjects.toString(this);} }
 
-    public static final class Window { private final long startTime,endTime; private final double avgUtilization; public Window(long startTime,long endTime,double avgUtilization){this.startTime=startTime;this.endTime=endTime;this.avgUtilization=avgUtilization;} public long startTime(){return startTime;} public long endTime(){return endTime;} public double avgUtilization(){return avgUtilization;} }
+    public static final class Window { private final long startTime,endTime; private final double avgUtilization; public Window(long startTime,long endTime,double avgUtilization){this.startTime=startTime;this.endTime=endTime;this.avgUtilization=avgUtilization;} public long startTime(){return startTime;} public long endTime(){return endTime;} public double avgUtilization(){return avgUtilization;} @Override public boolean equals(Object o){return ValueObjects.equalFields(this,o);} @Override public int hashCode(){return ValueObjects.hashFields(this);} @Override public String toString(){return ValueObjects.toString(this);} }
 }

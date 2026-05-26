@@ -1,5 +1,6 @@
 package io.sparkadvisor.ui.tab;
 
+import io.sparkadvisor.core.util.Strings;
 import io.sparkadvisor.ui.render.AnalysisCoordinator;
 import io.sparkadvisor.ui.render.EventLogPathResolver;
 import io.sparkadvisor.ui.render.QueueAnalysisCoordinator;
@@ -59,7 +60,7 @@ public final class SparkAdvisorPage extends WebUIPage {
             String css = coordinator.stylesheet();
             String form = searchForm(statementId);
             String report;
-            if (statementId == null || statementId.trim().isEmpty()) {
+            if (Strings.isBlank(statementId)) {
                 css = css + "\n" + queueCoordinator.stylesheet();
                 report = queueCoordinator.renderBody(
                         path, QueueAnalyzer.DEFAULT_TOP_N, QueueAnalyzer.DEFAULT_BUCKET_MS);

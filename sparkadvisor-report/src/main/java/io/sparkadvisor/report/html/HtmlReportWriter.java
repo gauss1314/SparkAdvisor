@@ -6,6 +6,7 @@ import io.sparkadvisor.core.finding.Finding;
 import io.sparkadvisor.core.finding.Recommendation;
 import io.sparkadvisor.core.predict.ExecutorScalingPrediction;
 import io.sparkadvisor.core.predict.ShufflePartitionPrediction;
+import io.sparkadvisor.core.util.Strings;
 import io.sparkadvisor.report.json.JsonReportWriter;
 import io.sparkadvisor.report.model.AnalysisResult;
 
@@ -128,7 +129,7 @@ public final class HtmlReportWriter {
         kv(h, t(zh, "Duration", "持续时间"), duration(s.wallClockMs()));
         kv(h, t(zh, "Stages", "Stage 数"), String.valueOf(s.stages().size()));
         h.append("</div>");
-        if (s.description() != null && !s.description().trim().isEmpty()) {
+        if (!Strings.isBlank(s.description())) {
             h.append("<details><summary>").append(t(zh, "SQL text", "SQL 文本"))
                     .append("</summary><pre class=\"sql\">")
                     .append(esc(s.description())).append("</pre></details>");
@@ -369,17 +370,17 @@ public final class HtmlReportWriter {
         }
         h.append("<p class=\"muted\">").append(t(zh, "Source", "来源"))
                 .append(": <b>").append(esc(advice.provider())).append("</b></p>");
-        if (advice.summary() != null && !advice.summary().trim().isEmpty()) {
+        if (!Strings.isBlank(advice.summary())) {
             h.append("<p>").append(esc(advice.summary())).append("</p>");
         }
         if (advice.recommendations() != null && !advice.recommendations().isEmpty()) {
             for (Recommendation rec : advice.recommendations()) {
                 h.append("<div class=\"rec\"><b>").append(rec.type()).append(":</b> ")
                         .append(esc(rec.action()));
-                if (rec.rationale() != null && !rec.rationale().trim().isEmpty()) {
+                if (!Strings.isBlank(rec.rationale())) {
                     h.append(" — <span class=\"muted\">").append(esc(rec.rationale())).append("</span>");
                 }
-                if (rec.expectedImpact() != null && !rec.expectedImpact().trim().isEmpty()) {
+                if (!Strings.isBlank(rec.expectedImpact())) {
                     h.append(" <span class=\"muted\">[").append(esc(rec.expectedImpact())).append("]</span>");
                 }
                 h.append("</div>");

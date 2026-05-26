@@ -3,6 +3,7 @@ package io.sparkadvisor.predictor.shuffle;
 import io.sparkadvisor.core.analyze.StageAnalysis;
 import io.sparkadvisor.core.predict.Confidence;
 import io.sparkadvisor.core.predict.ShufflePartitionPrediction;
+import io.sparkadvisor.core.util.Java8Collections;
 import io.sparkadvisor.predictor.costmodel.ShuffleCostModel;
 
 import java.util.ArrayList;
@@ -23,10 +24,10 @@ public final class ShufflePartitionPredictor {
                     stage.stageId(), currentPartitions, stage.wallClockMs(),
                     currentPartitions, stage.wallClockMs(),
                     ShufflePartitionPrediction.Direction.SKEW_LIMITED,
-                    new ArrayList<ShufflePartitionPrediction.Point>(),
+                    Java8Collections.<ShufflePartitionPrediction.Point>listOf(),
                     knob,
                     Confidence.MEDIUM,
-                    new ArrayList<String>(java.util.Arrays.asList("Stage is skewed (max/median >= " + SKEW_LIMIT + ").")),
+                    Java8Collections.listOf("Stage is skewed (max/median >= " + SKEW_LIMIT + ")."),
                     "Repartitioning rarely helps a skewed stage; address skew first (AQE skew-join / salting), then re-evaluate partition count.");
         }
 
@@ -62,10 +63,10 @@ public final class ShufflePartitionPredictor {
         return new ShufflePartitionPrediction(
                 stage.stageId(), currentPartitions, estCurrent, bestP, bestMs, dir, curve, knob,
                 Confidence.MEDIUM,
-                new ArrayList<String>(java.util.Arrays.asList(
+                Java8Collections.listOf(
                         "Fixed-overhead share assumed at " + (int) (FIXED_OVERHEAD_FRAC * 100) + "% of task time.",
                         "Throughput fit from a single operating point (median task).",
-                        "Per-task memory budget = " + perTaskMemoryBudget + " bytes.")),
+                        "Per-task memory budget = " + perTaskMemoryBudget + " bytes."),
                 "If the stage is actually skewed or task time is dominated by fixed overhead, the optimum shifts; treat the recommended count as a starting point.");
     }
 
@@ -83,10 +84,10 @@ public final class ShufflePartitionPredictor {
         return new ShufflePartitionPrediction(
                 stage.stageId(), current, stage.wallClockMs(), current, stage.wallClockMs(),
                 ShufflePartitionPrediction.Direction.ALREADY_OPTIMAL,
-                new ArrayList<ShufflePartitionPrediction.Point>(),
+                Java8Collections.<ShufflePartitionPrediction.Point>listOf(),
                 knob,
                 Confidence.LOW,
-                new ArrayList<String>(java.util.Arrays.asList("Insufficient shuffle volume to model partition sizing.")),
+                Java8Collections.listOf("Insufficient shuffle volume to model partition sizing."),
                 "No actionable shuffle in this stage.");
     }
 }

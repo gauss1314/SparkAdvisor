@@ -1,5 +1,7 @@
 package io.sparkadvisor.core.model;
 
+import io.sparkadvisor.core.util.ValueObjects;
+
 import java.util.List;
 import java.util.Objects;
 
@@ -31,4 +33,5 @@ public final class Job {
 
     @Override public boolean equals(Object o) { if (this == o) return true; if (!(o instanceof Job)) return false; Job job = (Job) o; return jobId == job.jobId && submissionTime == job.submissionTime && completionTime == job.completionTime && failed == job.failed && Objects.equals(sqlExecutionId, job.sqlExecutionId) && Objects.equals(stageIds, job.stageIds); }
     @Override public int hashCode() { return Objects.hash(jobId, sqlExecutionId, stageIds, submissionTime, completionTime, failed); }
+    @Override public String toString(){return ValueObjects.toString(this);}
 }

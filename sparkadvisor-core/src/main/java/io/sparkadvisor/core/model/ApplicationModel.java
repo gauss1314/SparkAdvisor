@@ -1,5 +1,7 @@
 package io.sparkadvisor.core.model;
 
+import io.sparkadvisor.core.util.ValueObjects;
+
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -48,4 +50,5 @@ public final class ApplicationModel {
 
     @Override public boolean equals(Object o) { if (this == o) return true; if (!(o instanceof ApplicationModel)) return false; ApplicationModel that = (ApplicationModel) o; return startTime == that.startTime && endTime == that.endTime && incomplete == that.incomplete && Objects.equals(appId, that.appId) && Objects.equals(appName, that.appName) && Objects.equals(conf, that.conf) && Objects.equals(sqlExecutions, that.sqlExecutions) && Objects.equals(jobs, that.jobs) && Objects.equals(stages, that.stages) && Objects.equals(executorEvents, that.executorEvents) && Objects.equals(taskIntervals, that.taskIntervals); }
     @Override public int hashCode() { return Objects.hash(appId, appName, startTime, endTime, incomplete, conf, sqlExecutions, jobs, stages, executorEvents, taskIntervals); }
+    @Override public String toString(){return ValueObjects.toString(this);}
 }

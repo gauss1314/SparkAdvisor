@@ -1,5 +1,7 @@
 package io.sparkadvisor.core.model;
 
+import io.sparkadvisor.core.util.ValueObjects;
+
 import java.util.List;
 import java.util.Objects;
 
@@ -35,4 +37,5 @@ public final class SqlExecution {
     public long wallClockMs() { return (startTime <= 0 || endTime <= 0) ? 0 : endTime - startTime; }
     @Override public boolean equals(Object o) { if (this == o) return true; if (!(o instanceof SqlExecution)) return false; SqlExecution that = (SqlExecution) o; return executionId == that.executionId && startTime == that.startTime && endTime == that.endTime && incomplete == that.incomplete && Objects.equals(statementId, that.statementId) && Objects.equals(description, that.description) && Objects.equals(physicalPlanText, that.physicalPlanText) && Objects.equals(jobIds, that.jobIds); }
     @Override public int hashCode() { return Objects.hash(executionId, statementId, description, physicalPlanText, startTime, endTime, incomplete, jobIds); }
+    @Override public String toString(){return ValueObjects.toString(this);}
 }

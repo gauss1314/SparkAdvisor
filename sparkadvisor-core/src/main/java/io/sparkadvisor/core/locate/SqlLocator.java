@@ -2,6 +2,8 @@ package io.sparkadvisor.core.locate;
 
 import io.sparkadvisor.core.model.ApplicationModel;
 import io.sparkadvisor.core.model.SqlExecution;
+import io.sparkadvisor.core.util.Java8Collections;
+import io.sparkadvisor.core.util.Strings;
 
 import java.util.Comparator;
 import java.util.List;
@@ -30,8 +32,8 @@ public final class SqlLocator {
 
     /** @return matches ordered by wall-clock duration descending; empty if none. */
     public List<SqlExecution> locate(String id) {
-        if (id == null || id.trim().isEmpty()) {
-            return new java.util.ArrayList<SqlExecution>();
+        if (Strings.isBlank(id)) {
+            return Java8Collections.listOf();
         }
         String key = id.trim();
 
@@ -41,16 +43,16 @@ public final class SqlLocator {
                 .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
 
         if (!byStatement.isEmpty()) {
-            return byStatement;
+            return Java8Collections.listCopy(byStatement);
         }
 
         if (isNumeric(key)) {
             long execId = Long.parseLong(key);
-            return app.sqlExecutions().stream()
+            return Java8Collections.listCopy(app.sqlExecutions().stream()
                     .filter(s -> s.executionId() == execId)
-                    .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
+                    .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new)));
         }
-        return new java.util.ArrayList<SqlExecution>();
+        return Java8Collections.listOf();
     }
 
     /** Convenience: the single slowest match, or empty. */

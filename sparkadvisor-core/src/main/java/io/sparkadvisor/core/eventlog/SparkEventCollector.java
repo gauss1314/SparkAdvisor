@@ -8,6 +8,7 @@ import io.sparkadvisor.core.model.SqlExecution;
 import io.sparkadvisor.core.model.Stage;
 import io.sparkadvisor.core.model.TaskInterval;
 import io.sparkadvisor.core.model.TaskMetricStats;
+import io.sparkadvisor.core.util.Java8Collections;
 
 import org.apache.spark.scheduler.SparkListener;
 import org.apache.spark.scheduler.SparkListenerApplicationEnd;
@@ -288,7 +289,7 @@ public final class SparkEventCollector extends SparkListener {
             boolean execIncomplete = b.startTime == 0L || b.endTime == 0L;
             execList.add(new SqlExecution(
                     b.executionId, b.statementId, b.description, b.physicalPlanText,
-                    b.startTime, b.endTime, execIncomplete, new ArrayList<>(b.jobIds)));
+                    b.startTime, b.endTime, execIncomplete, Java8Collections.listCopy(b.jobIds)));
         }
         List<Stage> stageList = new ArrayList<>();
         for (StageBuilder b : stages.values()) {
@@ -296,8 +297,9 @@ public final class SparkEventCollector extends SparkListener {
         }
         return new ApplicationModel(
                 appId, appName, appStart, appEnd, incomplete,
-                new LinkedHashMap<>(conf), new ArrayList<>(execList), new ArrayList<>(jobs), new ArrayList<>(stageList),
-                new ArrayList<>(executorEvents), new ArrayList<>(taskIntervals));
+                Java8Collections.mapCopy(conf), Java8Collections.listCopy(execList),
+                Java8Collections.listCopy(jobs), Java8Collections.listCopy(stageList),
+                Java8Collections.listCopy(executorEvents), Java8Collections.listCopy(taskIntervals));
     }
 
     // ---- Mutable builders ------------------------------------------------------
@@ -320,7 +322,7 @@ public final class SparkEventCollector extends SparkListener {
         int stageId;
         int attemptId;
         int numTasks;
-        List<Integer> parentStageIds = new ArrayList<Integer>();
+        List<Integer> parentStageIds = Java8Collections.listOf();
         long submissionTime = 0L;
         long firstTaskLaunch = 0L;
         long completionTime = 0L;

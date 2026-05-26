@@ -1,6 +1,7 @@
 package io.sparkadvisor.core.analyze;
 
 import io.sparkadvisor.core.model.Stage;
+import io.sparkadvisor.core.util.ValueObjects;
 import java.util.Objects;
 
 public final class StageAnalysis {
@@ -9,4 +10,5 @@ public final class StageAnalysis {
     public int stageId(){return stageId;} public int numTasks(){return numTasks;} public long wallClockMs(){return wallClockMs;} public long maxTaskMs(){return maxTaskMs;} public long medianTaskMs(){return medianTaskMs;} public long totalTaskTimeMs(){return totalTaskTimeMs;} public double skewRatio(){return skewRatio;} public double shuffleSkewRatio(){return shuffleSkewRatio;} public long shuffleReadBytes(){return shuffleReadBytes;} public long shuffleWriteBytes(){return shuffleWriteBytes;} public long spillBytes(){return spillBytes;} public double gcRatio(){return gcRatio;} public long schedulingDelayMs(){return schedulingDelayMs;} public long inputBytes(){return inputBytes;} public long medianInputBytesPerTask(){return medianInputBytesPerTask;}
     public static StageAnalysis from(Stage s){io.sparkadvisor.core.metrics.Distribution dur=s.taskStats().durationMs(),sr=s.taskStats().shuffleReadBytes(),in=s.taskStats().inputBytes(); long totalTaskMs=dur.sum(); long gcSum=s.taskStats().gcTimeMs().sum(); double gcRatio=totalTaskMs==0?0.0:(double)gcSum/(double)totalTaskMs; return new StageAnalysis(s.stageId(),s.numTasks(),s.wallClockMs(),dur.max(),dur.median(),totalTaskMs,dur.skewRatio(),sr.skewRatio(),s.shuffleReadTotalBytes(),s.shuffleWriteTotalBytes(),s.taskStats().totalSpillBytes(),gcRatio,s.schedulingDelayMs(),in.sum(),in.median());}
     @Override public boolean equals(Object o){if(this==o)return true; if(!(o instanceof StageAnalysis))return false; StageAnalysis a=(StageAnalysis)o; return stageId==a.stageId&&numTasks==a.numTasks&&wallClockMs==a.wallClockMs&&maxTaskMs==a.maxTaskMs&&medianTaskMs==a.medianTaskMs&&totalTaskTimeMs==a.totalTaskTimeMs&&Double.compare(a.skewRatio,skewRatio)==0&&Double.compare(a.shuffleSkewRatio,shuffleSkewRatio)==0&&shuffleReadBytes==a.shuffleReadBytes&&shuffleWriteBytes==a.shuffleWriteBytes&&spillBytes==a.spillBytes&&Double.compare(a.gcRatio,gcRatio)==0&&schedulingDelayMs==a.schedulingDelayMs&&inputBytes==a.inputBytes&&medianInputBytesPerTask==a.medianInputBytesPerTask;}
-    @Override public int hashCode(){return Objects.hash(stageId,numTasks,wallClockMs,maxTaskMs,medianTaskMs,totalTaskTimeMs,skewRatio,shuffleSkewRatio,shuffleReadBytes,shuffleWriteBytes,spillBytes,gcRatio,schedulingDelayMs,inputBytes,medianInputBytesPerTask);} }
+    @Override public int hashCode(){return Objects.hash(stageId,numTasks,wallClockMs,maxTaskMs,medianTaskMs,totalTaskTimeMs,skewRatio,shuffleSkewRatio,shuffleReadBytes,shuffleWriteBytes,spillBytes,gcRatio,schedulingDelayMs,inputBytes,medianInputBytesPerTask);}
+    @Override public String toString(){return ValueObjects.toString(this);} }

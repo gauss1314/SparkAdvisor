@@ -3,6 +3,7 @@ package io.sparkadvisor.advisor.llm;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.sparkadvisor.core.finding.Recommendation;
+import io.sparkadvisor.core.util.Strings;
 import io.sparkadvisor.report.model.AnalysisResult;
 
 import java.util.ArrayList;
@@ -36,7 +37,7 @@ public final class AdviceResponseParser {
                             n.path("expectedImpact").asText(null)));
                 }
             }
-            if (summary.trim().isEmpty() && recs.isEmpty()) {
+            if (Strings.isBlank(summary) && recs.isEmpty()) {
                 // Parsed but empty -> treat raw as summary.
                 return new AnalysisResult.AiAdvice(provider, raw == null ? "" : raw.trim(), new java.util.ArrayList<Recommendation>());
             }

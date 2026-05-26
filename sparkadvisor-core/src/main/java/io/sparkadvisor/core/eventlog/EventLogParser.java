@@ -1,6 +1,7 @@
 package io.sparkadvisor.core.eventlog;
 
 import io.sparkadvisor.core.model.ApplicationModel;
+import io.sparkadvisor.core.util.ValueObjects;
 
 import org.apache.spark.scheduler.ReplayListenerBus;
 
@@ -92,5 +93,8 @@ public final class EventLogParser {
 
         public InputStream stream() { return stream; }
         public String sourceName() { return sourceName; }
+        @Override public boolean equals(Object o){return ValueObjects.equalFields(this,o);}
+        @Override public int hashCode(){return ValueObjects.hashFields(this);}
+        @Override public String toString(){return ValueObjects.toString(this);}
     }
 }

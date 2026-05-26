@@ -1,6 +1,7 @@
 package io.sparkadvisor.monitor.advisor;
 
 import io.sparkadvisor.advisor.AdvisorFactory;
+import io.sparkadvisor.core.util.Strings;
 
 /**
  * Queue-level advisor wiring. Queue reports always include deterministic queue rules; this
@@ -11,7 +12,7 @@ public final class QueueAdvisorFactory {
     private QueueAdvisorFactory() {}
 
     public static QueueLlmAdvisor forMode(String mode) {
-        if (mode == null || mode.trim().isEmpty() || "none".equalsIgnoreCase(mode.trim())) {
+        if (Strings.isBlank(mode) || "none".equalsIgnoreCase(mode.trim())) {
             return null;
         }
         String normalized = mode.trim().toLowerCase();

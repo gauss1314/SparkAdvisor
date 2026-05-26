@@ -4,6 +4,7 @@ import io.sparkadvisor.core.EventLogAnalyzer;
 import io.sparkadvisor.core.locate.SqlLocator;
 import io.sparkadvisor.core.model.ApplicationModel;
 import io.sparkadvisor.core.model.SqlExecution;
+import io.sparkadvisor.core.util.Strings;
 import io.sparkadvisor.report.html.HtmlReportWriter;
 import io.sparkadvisor.report.json.JsonReportWriter;
 import io.sparkadvisor.report.model.AnalysisResult;
@@ -66,7 +67,7 @@ public final class AnalyzeCommand implements Callable<Integer> {
     @Override
     public Integer call() throws Exception {
         Configuration conf = new Configuration();
-        if (hadoopConfDir != null && !hadoopConfDir.trim().isEmpty()) {
+        if (!Strings.isBlank(hadoopConfDir)) {
             conf.addResource(new org.apache.hadoop.fs.Path(hadoopConfDir + "/core-site.xml"));
             conf.addResource(new org.apache.hadoop.fs.Path(hadoopConfDir + "/hdfs-site.xml"));
         }
@@ -80,7 +81,7 @@ public final class AnalyzeCommand implements Callable<Integer> {
         }
 
         SqlExecution target = selectTarget(model);
-        if (target == null && (statementId != null && !statementId.trim().isEmpty())) {
+        if (target == null && !Strings.isBlank(statementId)) {
             System.err.println("[error] No SQL execution matched StatementID/executionId: "
                     + statementId);
             return 2;
@@ -111,7 +112,7 @@ public final class AnalyzeCommand implements Callable<Integer> {
 
     /** Resolve the single target SQL: by id if given, else the slowest one. */
     private SqlExecution selectTarget(ApplicationModel model) {
-        if (statementId != null && !statementId.trim().isEmpty()) {
+        if (!Strings.isBlank(statementId)) {
             List<SqlExecution> matches = new SqlLocator(model).locate(statementId);
             return matches.isEmpty() ? null : matches.get(0);
         }

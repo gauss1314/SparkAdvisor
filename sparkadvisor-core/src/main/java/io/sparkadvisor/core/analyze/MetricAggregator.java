@@ -4,6 +4,7 @@ import io.sparkadvisor.core.model.ApplicationModel;
 import io.sparkadvisor.core.model.Job;
 import io.sparkadvisor.core.model.SqlExecution;
 import io.sparkadvisor.core.model.Stage;
+import io.sparkadvisor.core.util.Java8Collections;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -50,7 +51,9 @@ public final class MetricAggregator {
 
     public SqlAnalysis analyze(SqlExecution sql) {
         List<Stage> stages = stagesFor(sql);
-        List<StageAnalysis> stageAnalyses = stages.stream().map(StageAnalysis::from).collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
+        List<StageAnalysis> stageAnalyses = Java8Collections.listCopy(
+                stages.stream().map(StageAnalysis::from)
+                        .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new)));
 
         long criticalPath = criticalPath(stages);
         long ideal = idealTime(stages);

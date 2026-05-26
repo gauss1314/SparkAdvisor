@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.sparkadvisor.core.util.Strings;
 
 import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.CloseableHttpResponse;
@@ -50,8 +51,8 @@ public final class AnthropicLlmProvider implements LlmProvider {
 
     public AnthropicLlmProvider(String apiKey, String model, String baseUrl) {
         this.apiKey = apiKey;
-        this.model = (model == null || model.trim().isEmpty()) ? DEFAULT_MODEL : model;
-        this.baseUrl = (baseUrl == null || baseUrl.trim().isEmpty()) ? DEFAULT_BASE : baseUrl;
+        this.model = Strings.isBlank(model) ? DEFAULT_MODEL : model;
+        this.baseUrl = Strings.isBlank(baseUrl) ? DEFAULT_BASE : baseUrl;
         this.requestConfig = RequestConfig.custom()
                 .setConnectTimeout(15_000)
                 .setConnectionRequestTimeout(15_000)
@@ -69,7 +70,7 @@ public final class AnthropicLlmProvider implements LlmProvider {
 
     @Override
     public String complete(String systemPrompt, String userPrompt) throws Exception {
-        if (apiKey == null || apiKey.trim().isEmpty()) {
+        if (Strings.isBlank(apiKey)) {
             throw new IllegalStateException("No Anthropic API key (set ANTHROPIC_API_KEY)");
         }
         String body = buildRequestBody(systemPrompt, userPrompt);

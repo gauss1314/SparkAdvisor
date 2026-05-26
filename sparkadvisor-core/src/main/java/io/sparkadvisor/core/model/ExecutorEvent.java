@@ -1,5 +1,7 @@
 package io.sparkadvisor.core.model;
 
+import io.sparkadvisor.core.util.ValueObjects;
+
 import java.util.Objects;
 
 /**
@@ -34,6 +36,6 @@ public final class ExecutorEvent {
 
     @Override
     public String toString() {
-        return "ExecutorEvent{" + "timeMs=" + timeMs + ", cores=" + cores + ", added=" + added + '}';
+        return ValueObjects.toString(this);
     }
 }

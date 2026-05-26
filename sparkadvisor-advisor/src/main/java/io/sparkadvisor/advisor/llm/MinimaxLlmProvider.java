@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import io.sparkadvisor.core.util.Strings;
 
 import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.CloseableHttpResponse;
@@ -52,8 +53,8 @@ public final class MinimaxLlmProvider implements LlmProvider {
 
     public MinimaxLlmProvider(String apiKey, String model, String baseUrl) {
         this.apiKey = apiKey;
-        this.model = (model == null || model.trim().isEmpty()) ? DEFAULT_MODEL : model;
-        this.baseUrl = (baseUrl == null || baseUrl.trim().isEmpty()) ? DEFAULT_BASE : baseUrl;
+        this.model = Strings.isBlank(model) ? DEFAULT_MODEL : model;
+        this.baseUrl = Strings.isBlank(baseUrl) ? DEFAULT_BASE : baseUrl;
         this.requestConfig = RequestConfig.custom()
                 .setConnectTimeout(15_000)
                 .setConnectionRequestTimeout(15_000)
@@ -71,7 +72,7 @@ public final class MinimaxLlmProvider implements LlmProvider {
 
     @Override
     public String complete(String systemPrompt, String userPrompt) throws Exception {
-        if (apiKey == null || apiKey.trim().isEmpty()) {
+        if (Strings.isBlank(apiKey)) {
             throw new IllegalStateException("No MiniMax API key (set MINIMAX_API_KEY)");
         }
         String body = buildRequestBody(systemPrompt, userPrompt);
@@ -114,17 +115,17 @@ public final class MinimaxLlmProvider implements LlmProvider {
         JsonNode root = mapper.readTree(responseBody);
 
         JsonNode openAiContent = root.path("choices").path(0).path("message").path("content");
-        if (!openAiContent.isMissingNode() && !openAiContent.asText("").trim().isEmpty()) {
+        if (!openAiContent.isMissingNode() && !Strings.isBlank(openAiContent.asText(""))) {
             return openAiContent.asText();
         }
 
         JsonNode legacyReply = root.path("reply");
-        if (!legacyReply.isMissingNode() && !legacyReply.asText("").trim().isEmpty()) {
+        if (!legacyReply.isMissingNode() && !Strings.isBlank(legacyReply.asText(""))) {
             return legacyReply.asText();
         }
 
         JsonNode text = root.path("text");
-        if (!text.isMissingNode() && !text.asText("").trim().isEmpty()) {
+        if (!text.isMissingNode() && !Strings.isBlank(text.asText(""))) {
             return text.asText();
         }
 
@@ -142,7 +143,7 @@ public final class MinimaxLlmProvider implements LlmProvider {
 
     private static String envOrDefault(String name, String fallback) {
         String value = System.getenv(name);
-        return value == null || value.trim().isEmpty() ? fallback : value;
+        return Strings.isBlank(value) ? fallback : value;
     }
 
     private static String truncate(String s) {

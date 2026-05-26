@@ -3,6 +3,7 @@ package io.sparkadvisor.ui.render;
 import io.sparkadvisor.monitor.QueueAnalyzer;
 import io.sparkadvisor.monitor.aggregate.QueueAnalysisResult;
 import io.sparkadvisor.monitor.render.QueueHtmlWriter;
+import io.sparkadvisor.core.util.ValueObjects;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
@@ -160,5 +161,8 @@ public final class QueueAnalysisCoordinator {
         private String key(){return key;}
         private long totalBytes(){return totalBytes;}
         private long modifiedAt(){return modifiedAt;}
+        @Override public boolean equals(Object o){return ValueObjects.equalFields(this,o);}
+        @Override public int hashCode(){return ValueObjects.hashFields(this);}
+        @Override public String toString(){return ValueObjects.toString(this);}
     }
 }

@@ -4,6 +4,8 @@ import io.sparkadvisor.core.analyze.SqlAnalysis;
 import io.sparkadvisor.core.analyze.StageAnalysis;
 import io.sparkadvisor.core.predict.ExecutorScalingPrediction;
 import io.sparkadvisor.core.predict.ShufflePartitionPrediction;
+import io.sparkadvisor.core.util.Strings;
+import io.sparkadvisor.core.util.ValueObjects;
 import io.sparkadvisor.predictor.executor.ExecutorScalingPredictor;
 import io.sparkadvisor.predictor.shuffle.ShufflePartitionPredictor;
 
@@ -26,6 +28,9 @@ public final class PredictionService {
         public Predictions(ShufflePartitionPrediction shuffle, ExecutorScalingPrediction executor){this.shuffle=shuffle;this.executor=executor;}
         public ShufflePartitionPrediction shuffle(){return shuffle;}
         public ExecutorScalingPrediction executor(){return executor;}
+        @Override public boolean equals(Object o){return ValueObjects.equalFields(this,o);}
+        @Override public int hashCode(){return ValueObjects.hashFields(this);}
+        @Override public String toString(){return ValueObjects.toString(this);}
     }
 
     /**
@@ -88,7 +93,7 @@ public final class PredictionService {
 
     private static long memBytes(Map<String, String> c, String k, long dflt) {
         String v = c.get(k);
-        if (v == null || v.trim().isEmpty()) return dflt;
+        if (Strings.isBlank(v)) return dflt;
         v = v.trim().toLowerCase();
         try {
             long mult = 1;

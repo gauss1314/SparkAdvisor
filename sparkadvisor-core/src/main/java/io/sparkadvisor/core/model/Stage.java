@@ -1,5 +1,7 @@
 package io.sparkadvisor.core.model;
 
+import io.sparkadvisor.core.util.ValueObjects;
+
 import java.util.List;
 import java.util.Objects;
 
@@ -43,4 +45,5 @@ public final class Stage {
     public long schedulingDelayMs() { return (submissionTime <= 0 || firstTaskLaunchTime <= 0) ? 0 : Math.max(0, firstTaskLaunchTime - submissionTime); }
     @Override public boolean equals(Object o) { if (this == o) return true; if (!(o instanceof Stage)) return false; Stage stage = (Stage) o; return stageId == stage.stageId && attemptId == stage.attemptId && numTasks == stage.numTasks && submissionTime == stage.submissionTime && firstTaskLaunchTime == stage.firstTaskLaunchTime && completionTime == stage.completionTime && shuffleReadTotalBytes == stage.shuffleReadTotalBytes && shuffleWriteTotalBytes == stage.shuffleWriteTotalBytes && Objects.equals(parentStageIds, stage.parentStageIds) && Objects.equals(taskStats, stage.taskStats); }
     @Override public int hashCode() { return Objects.hash(stageId, attemptId, numTasks, parentStageIds, submissionTime, firstTaskLaunchTime, completionTime, shuffleReadTotalBytes, shuffleWriteTotalBytes, taskStats); }
+    @Override public String toString(){return ValueObjects.toString(this);}
 }

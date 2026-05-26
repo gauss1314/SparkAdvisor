@@ -10,6 +10,7 @@ import io.sparkadvisor.analyzer.rule.Rule;
 import io.sparkadvisor.analyzer.rule.SchedulingDelayRule;
 import io.sparkadvisor.analyzer.rule.SmallFilesRule;
 import io.sparkadvisor.core.finding.Finding;
+import io.sparkadvisor.core.util.Java8Collections;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -31,7 +32,7 @@ public final class RuleEngine {
     }
 
     public RuleEngine(List<Rule> rules) {
-        this.rules = new ArrayList<Rule>(rules);
+        this.rules = Java8Collections.listCopy(rules);
     }
 
     public static List<Rule> defaultRules() {
@@ -44,7 +45,7 @@ public final class RuleEngine {
         list.add(new GcPressureRule());
         list.add(new SchedulingDelayRule());
         list.add(new BroadcastJoinRule());
-        return list;
+        return Java8Collections.listCopy(list);
     }
 
     public List<Finding> run(RuleContext ctx) {

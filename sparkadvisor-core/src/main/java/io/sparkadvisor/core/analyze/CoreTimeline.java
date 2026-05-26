@@ -1,6 +1,8 @@
 package io.sparkadvisor.core.analyze;
 
 import io.sparkadvisor.core.model.ExecutorEvent;
+import io.sparkadvisor.core.util.Java8Collections;
+import io.sparkadvisor.core.util.ValueObjects;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -28,6 +30,9 @@ public final class CoreTimeline {
         public long endMs(){return endMs;}
         public int cores(){return cores;}
         long durationMs(){ return Math.max(0, endMs - startMs);}
+        @Override public boolean equals(Object o){return ValueObjects.equalFields(this,o);}
+        @Override public int hashCode(){return ValueObjects.hashFields(this);}
+        @Override public String toString(){return ValueObjects.toString(this);}
     }
 
     private final List<Segment> segments;
@@ -47,7 +52,7 @@ public final class CoreTimeline {
      */
     public static CoreTimeline from(List<ExecutorEvent> events, int fallbackCores) {
         if (events == null || events.isEmpty()) {
-            return new CoreTimeline(new ArrayList<Segment>(), fallbackCores);
+            return new CoreTimeline(Java8Collections.<Segment>listOf(), fallbackCores);
         }
         List<ExecutorEvent> sorted = new ArrayList<>(events);
         sorted.sort(Comparator.comparingLong(ExecutorEvent::timeMs));
@@ -67,7 +72,7 @@ public final class CoreTimeline {
         if (running > 0) {
             segs.add(new Segment(prevTime, Long.MAX_VALUE, running));
         }
-        return new CoreTimeline(segs, fallbackCores);
+        return new CoreTimeline(Java8Collections.listCopy(segs), fallbackCores);
     }
 
     /**

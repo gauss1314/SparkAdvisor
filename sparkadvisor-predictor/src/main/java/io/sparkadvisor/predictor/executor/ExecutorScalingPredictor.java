@@ -4,6 +4,7 @@ import io.sparkadvisor.core.analyze.SqlAnalysis;
 import io.sparkadvisor.core.analyze.StageAnalysis;
 import io.sparkadvisor.core.predict.Confidence;
 import io.sparkadvisor.core.predict.ExecutorScalingPrediction;
+import io.sparkadvisor.core.util.Java8Collections;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -34,10 +35,10 @@ public final class ExecutorScalingPredictor {
 
         return new ExecutorScalingPrediction(
                 currentCores, estCurrent, knee, curve, Confidence.MEDIUM,
-                new java.util.ArrayList<String>(java.util.Arrays.asList(
+                Java8Collections.listOf(
                         "Each stage modeled as max(longestTask, waves * avgTask).",
                         "Skew caps the achievable speedup (longest task is irreducible).",
-                        "Assumes adding cores does not change data layout or shuffle cost."))) ;
+                        "Assumes adding cores does not change data layout or shuffle cost.")) ;
     }
 
     private long estimateWallMs(SqlAnalysis sql, int cores) {

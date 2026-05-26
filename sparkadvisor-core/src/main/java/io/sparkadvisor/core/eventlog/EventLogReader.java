@@ -6,6 +6,7 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.compress.CompressionCodec;
 import org.apache.hadoop.io.compress.CompressionCodecFactory;
+import io.sparkadvisor.core.util.Java8Collections;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -76,9 +77,7 @@ public final class EventLogReader implements AutoCloseable {
         if (fs.isDirectory(root)) {
             return openRolling();
         }
-        java.util.List<EventLogParser.EventLogPart> one = new java.util.ArrayList<EventLogParser.EventLogPart>();
-        one.add(openOne(fs.getFileStatus(root)));
-        return one;
+        return Java8Collections.listOf(openOne(fs.getFileStatus(root)));
     }
 
     private List<EventLogParser.EventLogPart> openRolling() throws IOException {

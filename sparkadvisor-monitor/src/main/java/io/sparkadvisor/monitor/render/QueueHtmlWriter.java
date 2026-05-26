@@ -1,6 +1,7 @@
 package io.sparkadvisor.monitor.render;
 
 import io.sparkadvisor.core.finding.Recommendation;
+import io.sparkadvisor.core.util.Strings;
 import io.sparkadvisor.monitor.aggregate.QueueAnalysisResult;
 import io.sparkadvisor.report.model.AnalysisResult;
 
@@ -298,17 +299,17 @@ public final class QueueHtmlWriter {
         }
         h.append("<p class=\"muted\">").append(t(zh, "Source", "来源")).append(": <b>")
                 .append(esc(advice.provider())).append("</b></p>");
-        if (advice.summary() != null && !advice.summary().trim().isEmpty()) {
+        if (!Strings.isBlank(advice.summary())) {
             h.append("<p>").append(esc(advice.summary())).append("</p>");
         }
         if (advice.recommendations() != null) {
             for (Recommendation rec : advice.recommendations()) {
                 h.append("<div class=\"rec\"><b>").append(rec.type()).append(":</b> ")
                         .append(esc(rec.action()));
-                if (rec.rationale() != null && !rec.rationale().trim().isEmpty()) {
+                if (!Strings.isBlank(rec.rationale())) {
                     h.append("<p>").append(esc(rec.rationale())).append("</p>");
                 }
-                if (rec.expectedImpact() != null && !rec.expectedImpact().trim().isEmpty()) {
+                if (!Strings.isBlank(rec.expectedImpact())) {
                     h.append("<p class=\"muted\">").append(esc(rec.expectedImpact())).append("</p>");
                 }
                 h.append("</div>");
@@ -408,7 +409,7 @@ public final class QueueHtmlWriter {
     }
 
     private String statementLink(String statementId) {
-        if (statementId == null || statementId.trim().isEmpty()) {
+        if (Strings.isBlank(statementId)) {
             return "-";
         }
         String escaped = esc(statementId);
@@ -508,7 +509,7 @@ public final class QueueHtmlWriter {
     }
 
     private static String clockTime(String instantText) {
-        if (instantText == null || instantText.trim().isEmpty()) {
+        if (Strings.isBlank(instantText)) {
             return "-";
         }
         try {

@@ -1,5 +1,7 @@
 package io.sparkadvisor.predictor.costmodel;
 
+import io.sparkadvisor.core.util.ValueObjects;
+
 /**
  * Analytical cost model for a single shuffle stage, per design doc §8.1.
  *
@@ -69,4 +71,7 @@ public final class ShuffleCostModel {
         double r = observedBytesPerTask <= 0 ? 1.0 : observedBytesPerTask / variable;
         return new double[]{o, r};
     }
+    @Override public boolean equals(Object o){return ValueObjects.equalFields(this,o);}
+    @Override public int hashCode(){return ValueObjects.hashFields(this);}
+    @Override public String toString(){return ValueObjects.toString(this);}
 }

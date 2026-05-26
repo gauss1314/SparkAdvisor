@@ -4,6 +4,7 @@ import io.sparkadvisor.core.finding.Finding;
 import io.sparkadvisor.core.model.ApplicationModel;
 import io.sparkadvisor.core.model.ExecutorEvent;
 import io.sparkadvisor.core.model.TaskInterval;
+import io.sparkadvisor.core.util.Java8Collections;
 import io.sparkadvisor.monitor.collect.QuerySample;
 import io.sparkadvisor.monitor.contention.ContentionTimeline;
 import io.sparkadvisor.monitor.rule.QueueRuleEngine;
@@ -47,7 +48,7 @@ public final class QueueAggregator {
                 resources(completed),
                 contentionReport(completed, contention),
                 topSlowQueries(completed, contention, topN),
-                new java.util.ArrayList<>(),
+                Java8Collections.<QueueAnalysisResult.QueueRecommendation>listOf(),
                 null,
                 meta(app, sourcePath, topN));
         return base.withRecommendations(ruleEngine.recommend(base));
@@ -108,7 +109,7 @@ public final class QueueAggregator {
                     quantile(values, 0.99),
                     utilByBucket.getOrDefault(bucketStart, 0.0)));
         }
-        return result;
+        return Java8Collections.listCopy(result);
     }
 
     private List<QueueAnalysisResult.BottleneckCluster> bottlenecks(List<QuerySample> samples) {
@@ -122,12 +123,12 @@ public final class QueueAggregator {
                         .affected++;
             }
         }
-        return counts.values().stream()
+        return Java8Collections.listCopy(counts.values().stream()
                 .sorted(Comparator.comparingInt((RuleCount c) -> c.affected).reversed()
                         .thenComparing(c -> c.ruleId))
                 .map(c -> new QueueAnalysisResult.BottleneckCluster(
                         c.ruleId, c.category, c.affected, (double) c.affected / denominator))
-                .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
+                .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new)));
     }
 
     private QueueAnalysisResult.UtilizationSeries utilization(ContentionTimeline contention) {
@@ -141,7 +142,7 @@ public final class QueueAggregator {
         double peak = points.stream().mapToDouble(QueueAnalysisResult.UtilizationSeries.Point::avgUtilization)
                 .max()
                 .orElse(0.0);
-        return new QueueAnalysisResult.UtilizationSeries(points, avg, peak);
+        return new QueueAnalysisResult.UtilizationSeries(Java8Collections.listCopy(points), avg, peak);
     }
 
     private QueueAnalysisResult.ResourceMetrics resources(List<QuerySample> completed) {
@@ -179,17 +180,18 @@ public final class QueueAggregator {
                 .limit(10)
                 .map(q -> slowRef(q, contention))
                 .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
-        return new QueueAnalysisResult.ContentionReport(pct, hotspots, hogs);
+        return new QueueAnalysisResult.ContentionReport(pct, Java8Collections.listCopy(hotspots),
+                Java8Collections.listCopy(hogs));
     }
 
     private List<QueueAnalysisResult.SlowQueryRef> topSlowQueries(List<QuerySample> completed,
                                                                   ContentionTimeline contention,
                                                                   int topN) {
-        return completed.stream()
+        return Java8Collections.listCopy(completed.stream()
                 .sorted(Comparator.comparingLong(QuerySample::durationMs).reversed())
                 .limit(Math.max(1, topN))
                 .map(q -> slowRef(q, contention))
-                .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
+                .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new)));
     }
 
     private QueueAnalysisResult.SlowQueryRef slowRef(QuerySample q, ContentionTimeline contention) {
@@ -222,7 +224,7 @@ public final class QueueAggregator {
                 sourcePath,
                 topN,
                 "Contention is inferred from task occupancy under a FIFO/single-pool assumption; "
-                        + "event logs do not directly capture queue wait time.");
+                        + "event logs do not directly record queue wait time.");
     }
 
     private static long windowStart(ApplicationModel app, List<QuerySample> samples) {
@@ -275,7 +277,7 @@ public final class QueueAggregator {
     private static int maxCoresFromEvents(List<ExecutorEvent> events) {
         int current = 0;
         int max = 0;
-        List<ExecutorEvent> sorted = events == null ? new java.util.ArrayList<>() : events.stream()
+        List<ExecutorEvent> sorted = events == null ? Java8Collections.<ExecutorEvent>listOf() : events.stream()
                 .sorted(Comparator.comparingLong(ExecutorEvent::timeMs))
                 .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
         for (ExecutorEvent event : sorted) {

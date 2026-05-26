@@ -1,6 +1,7 @@
 package io.sparkadvisor.core.model;
 
 import io.sparkadvisor.core.metrics.Distribution;
+import io.sparkadvisor.core.util.ValueObjects;
 import java.util.Objects;
 
 public final class TaskMetricStats {
@@ -44,4 +45,5 @@ public final class TaskMetricStats {
     public long totalSpillBytes() { return memorySpillBytes.sum() + diskSpillBytes.sum(); }
     @Override public boolean equals(Object o) { if (this == o) return true; if (!(o instanceof TaskMetricStats)) return false; TaskMetricStats that = (TaskMetricStats) o; return Objects.equals(durationMs, that.durationMs) && Objects.equals(shuffleReadBytes, that.shuffleReadBytes) && Objects.equals(shuffleWriteBytes, that.shuffleWriteBytes) && Objects.equals(inputBytes, that.inputBytes) && Objects.equals(outputBytes, that.outputBytes) && Objects.equals(memorySpillBytes, that.memorySpillBytes) && Objects.equals(diskSpillBytes, that.diskSpillBytes) && Objects.equals(gcTimeMs, that.gcTimeMs) && Objects.equals(deserializeMs, that.deserializeMs); }
     @Override public int hashCode() { return Objects.hash(durationMs, shuffleReadBytes, shuffleWriteBytes, inputBytes, outputBytes, memorySpillBytes, diskSpillBytes, gcTimeMs, deserializeMs); }
+    @Override public String toString(){return ValueObjects.toString(this);}
 }

@@ -5,6 +5,7 @@ import io.sparkadvisor.core.analyze.SqlAnalysis;
 import io.sparkadvisor.core.finding.Finding;
 import io.sparkadvisor.core.finding.Recommendation;
 import io.sparkadvisor.core.finding.Severity;
+import io.sparkadvisor.core.util.Strings;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -32,7 +33,7 @@ public final class BroadcastJoinRule implements Rule {
     public List<Finding> evaluate(RuleContext ctx) {
         SqlAnalysis sql = ctx.sql();
         String plan = sql.physicalPlanText();
-        if (plan == null || plan.trim().isEmpty()) {
+        if (Strings.isBlank(plan)) {
             return new java.util.ArrayList<Finding>();
         }
         boolean hasSortMergeJoin = plan.contains("SortMergeJoin");

@@ -32,7 +32,7 @@ public final class QueueAggregator {
                                          long bucketMs) {
         List<QuerySample> completed = samples.stream()
                 .filter(q -> !q.running() && q.durationMs() > 0L)
-                .toList();
+                .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
         int running = (int) samples.stream().filter(QuerySample::running).count();
         int failed = (int) samples.stream().filter(QuerySample::failed).count();
         long windowStart = windowStart(app, samples);
@@ -47,7 +47,7 @@ public final class QueueAggregator {
                 resources(completed),
                 contentionReport(completed, contention),
                 topSlowQueries(completed, contention, topN),
-                List.of(),
+                new java.util.ArrayList<>(),
                 null,
                 meta(app, sourcePath, topN));
         return base.withRecommendations(ruleEngine.recommend(base));
@@ -112,7 +112,7 @@ public final class QueueAggregator {
     }
 
     private List<QueueAnalysisResult.BottleneckCluster> bottlenecks(List<QuerySample> samples) {
-        List<QuerySample> analyzed = samples.stream().filter(QuerySample::deepAnalyzed).toList();
+        List<QuerySample> analyzed = samples.stream().filter(QuerySample::deepAnalyzed).collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
         int denominator = Math.max(1, analyzed.size());
         Map<String, RuleCount> counts = new HashMap<>();
         for (QuerySample sample : analyzed) {
@@ -127,14 +127,14 @@ public final class QueueAggregator {
                         .thenComparing(c -> c.ruleId))
                 .map(c -> new QueueAnalysisResult.BottleneckCluster(
                         c.ruleId, c.category, c.affected, (double) c.affected / denominator))
-                .toList();
+                .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
     }
 
     private QueueAnalysisResult.UtilizationSeries utilization(ContentionTimeline contention) {
         List<QueueAnalysisResult.UtilizationSeries.Point> points = contention.bucketUtilization().stream()
                 .map(u -> new QueueAnalysisResult.UtilizationSeries.Point(
                         u.bucketStart(), u.bucketEnd(), u.avgUtilization()))
-                .toList();
+                .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
         double avg = points.stream().mapToDouble(QueueAnalysisResult.UtilizationSeries.Point::avgUtilization)
                 .average()
                 .orElse(0.0);
@@ -149,7 +149,7 @@ public final class QueueAggregator {
         List<Long> gcBasisPoints = completed.stream()
                 .map(q -> Math.round(q.maxGcRatio() * 10_000.0))
                 .sorted()
-                .toList();
+                .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
         double avgGc = gcBasisPoints.stream()
                 .mapToLong(Long::longValue)
                 .average()
@@ -171,14 +171,14 @@ public final class QueueAggregator {
         List<QueueAnalysisResult.ContentionReport.Window> hotspots = contention.hotspots().stream()
                 .map(w -> new QueueAnalysisResult.ContentionReport.Window(
                         w.startTime(), w.endTime(), w.avgUtilization()))
-                .toList();
+                .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
         List<QueueAnalysisResult.SlowQueryRef> hogs = completed.stream()
                 .sorted(Comparator.comparingLong((QuerySample q) -> contention.queryContention()
                         .getOrDefault(q.executionId(), emptyContention(q.executionId()))
                         .ownCoreMs()).reversed())
                 .limit(10)
                 .map(q -> slowRef(q, contention))
-                .toList();
+                .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
         return new QueueAnalysisResult.ContentionReport(pct, hotspots, hogs);
     }
 
@@ -189,7 +189,7 @@ public final class QueueAggregator {
                 .sorted(Comparator.comparingLong(QuerySample::durationMs).reversed())
                 .limit(Math.max(1, topN))
                 .map(q -> slowRef(q, contention))
-                .toList();
+                .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
     }
 
     private QueueAnalysisResult.SlowQueryRef slowRef(QuerySample q, ContentionTimeline contention) {
@@ -222,7 +222,7 @@ public final class QueueAggregator {
                 sourcePath,
                 topN,
                 "Contention is inferred from task occupancy under a FIFO/single-pool assumption; "
-                        + "event logs do not directly record queue wait time.");
+                        + "event logs do not directly capture queue wait time.");
     }
 
     private static long windowStart(ApplicationModel app, List<QuerySample> samples) {
@@ -259,7 +259,7 @@ public final class QueueAggregator {
         if (values == null || values.isEmpty()) {
             return 0L;
         }
-        List<Long> sorted = values.stream().sorted().toList();
+        List<Long> sorted = values.stream().sorted().collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
         int idx = (int) Math.ceil(q * sorted.size()) - 1;
         idx = Math.max(0, Math.min(sorted.size() - 1, idx));
         return sorted.get(idx);
@@ -275,9 +275,9 @@ public final class QueueAggregator {
     private static int maxCoresFromEvents(List<ExecutorEvent> events) {
         int current = 0;
         int max = 0;
-        List<ExecutorEvent> sorted = events == null ? List.of() : events.stream()
+        List<ExecutorEvent> sorted = events == null ? new java.util.ArrayList<>() : events.stream()
                 .sorted(Comparator.comparingLong(ExecutorEvent::timeMs))
-                .toList();
+                .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
         for (ExecutorEvent event : sorted) {
             current += event.added() ? event.cores() : -event.cores();
             if (current > max) {

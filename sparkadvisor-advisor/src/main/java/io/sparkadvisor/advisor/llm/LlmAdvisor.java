@@ -39,7 +39,7 @@ public final class LlmAdvisor implements TuningAdvisor {
     public AnalysisResult.AiAdvice advise(AnalysisResult result) {
         if (provider == null) {
             return new AnalysisResult.AiAdvice(name(),
-                    "No LLM provider configured; set one to generate AI advice.", List.of());
+                    "No LLM provider configured; set one to generate AI advice.", new java.util.ArrayList<io.sparkadvisor.core.finding.Recommendation>());
         }
         try {
             String system = promptBuilder.systemPrompt();
@@ -51,7 +51,7 @@ public final class LlmAdvisor implements TuningAdvisor {
             return new AnalysisResult.AiAdvice(name(),
                     "AI advice unavailable (" + e.getClass().getSimpleName()
                             + "). The rule-based findings and predictions above still apply.",
-                    List.of());
+                    new java.util.ArrayList<io.sparkadvisor.core.finding.Recommendation>());
         }
     }
 }

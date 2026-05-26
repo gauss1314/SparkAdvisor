@@ -32,14 +32,14 @@ public final class BroadcastJoinRule implements Rule {
     public List<Finding> evaluate(RuleContext ctx) {
         SqlAnalysis sql = ctx.sql();
         String plan = sql.physicalPlanText();
-        if (plan == null || plan.isBlank()) {
-            return List.of();
+        if (plan == null || plan.trim().isEmpty()) {
+            return new java.util.ArrayList<Finding>();
         }
         boolean hasSortMergeJoin = plan.contains("SortMergeJoin");
         boolean hasBroadcastJoin = plan.contains("BroadcastHashJoin")
                 || plan.contains("BroadcastNestedLoopJoin");
         if (!hasSortMergeJoin || hasBroadcastJoin) {
-            return List.of();
+            return new java.util.ArrayList<Finding>();
         }
 
         Map<String, String> evidence = new LinkedHashMap<>();
@@ -51,7 +51,7 @@ public final class BroadcastJoinRule implements Rule {
                         + "If one join side is small, broadcasting it would avoid a shuffle. "
                         + "(Heuristic — confirm the small side's actual size.)";
 
-        List<Recommendation> recs = List.of(
+        List<Recommendation> recs = new java.util.ArrayList<Recommendation>(java.util.Arrays.asList(
                 Recommendation.conf(
                         "raise spark.sql.autoBroadcastJoinThreshold if the small side fits in memory",
                         "Lets Spark auto-broadcast a side under the threshold, replacing the shuffle join.",
@@ -61,6 +61,7 @@ public final class BroadcastJoinRule implements Rule {
                         "Forces a broadcast join regardless of the auto threshold when you know a side is small.",
                         "Explicit and reliable when the small side is known."));
 
-        return List.of(new Finding(id(), "join", Severity.INFO, null, explanation, evidence, recs));
+        java.util.List<Finding> out = new java.util.ArrayList<Finding>();
+        out.add(new Finding(id(), "join", Severity.INFO, null, explanation, evidence, recs));
     }
 }

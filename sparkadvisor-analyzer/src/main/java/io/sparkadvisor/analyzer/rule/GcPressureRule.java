@@ -37,7 +37,7 @@ public final class GcPressureRule implements Rule {
                     "Stage %d spends %.0f%% of task time in GC, indicating memory pressure.",
                     st.stageId(), st.gcRatio() * 100);
 
-            List<Recommendation> recs = List.of(
+            List<Recommendation> recs = new java.util.ArrayList<Recommendation>(java.util.Arrays.asList(
                     Recommendation.conf(
                             "increase executor memory or reduce per-task data "
                                     + "(more partitions / smaller advisory size)",

@@ -142,5 +142,13 @@ public final class QueueAnalysisCoordinator {
         return String.format("%.2f %s", d, units[i]);
     }
 
-    private record Snapshot(String key, long totalBytes, long modifiedAt) {}
+    private static final class Snapshot {
+        private final String key;
+        private final long totalBytes;
+        private final long modifiedAt;
+        private Snapshot(String key, long totalBytes, long modifiedAt){this.key=key;this.totalBytes=totalBytes;this.modifiedAt=modifiedAt;}
+        private String key(){return key;}
+        private long totalBytes(){return totalBytes;}
+        private long modifiedAt(){return modifiedAt;}
+    }
 }

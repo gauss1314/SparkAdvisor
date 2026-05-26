@@ -294,17 +294,17 @@ public final class QueueHtmlWriter {
         }
         h.append("<p class=\"muted\">").append(t(zh, "Source", "来源")).append(": <b>")
                 .append(esc(advice.provider())).append("</b></p>");
-        if (advice.summary() != null && !advice.summary().isBlank()) {
+        if (advice.summary() != null && !advice.summary().trim().isEmpty()) {
             h.append("<p>").append(esc(advice.summary())).append("</p>");
         }
         if (advice.recommendations() != null) {
             for (var rec : advice.recommendations()) {
                 h.append("<div class=\"rec\"><b>").append(rec.type()).append(":</b> ")
                         .append(esc(rec.action()));
-                if (rec.rationale() != null && !rec.rationale().isBlank()) {
+                if (rec.rationale() != null && !rec.rationale().trim().isEmpty()) {
                     h.append("<p>").append(esc(rec.rationale())).append("</p>");
                 }
-                if (rec.expectedImpact() != null && !rec.expectedImpact().isBlank()) {
+                if (rec.expectedImpact() != null && !rec.expectedImpact().trim().isEmpty()) {
                     h.append("<p class=\"muted\">").append(esc(rec.expectedImpact())).append("</p>");
                 }
                 h.append("</div>");
@@ -404,7 +404,7 @@ public final class QueueHtmlWriter {
     }
 
     private String statementLink(String statementId) {
-        if (statementId == null || statementId.isBlank()) {
+        if (statementId == null || statementId.trim().isEmpty()) {
             return "-";
         }
         String escaped = esc(statementId);
@@ -436,12 +436,12 @@ public final class QueueHtmlWriter {
         for (int i = 0; i < s.length(); i++) {
             char c = s.charAt(i);
             switch (c) {
-                case '&' -> b.append("&amp;");
-                case '<' -> b.append("&lt;");
-                case '>' -> b.append("&gt;");
-                case '"' -> b.append("&quot;");
-                case '\'' -> b.append("&#39;");
-                default -> b.append(c);
+                case '&': b.append("&amp;"); break;
+                case '<': b.append("&lt;"); break;
+                case '>': b.append("&gt;"); break;
+                case '"': b.append("&quot;"); break;
+                case '\'': b.append("&#39;"); break;
+                default: b.append(c); break;
             }
         }
         return b.toString();
@@ -500,7 +500,7 @@ public final class QueueHtmlWriter {
     }
 
     private static String clockTime(String instantText) {
-        if (instantText == null || instantText.isBlank()) {
+        if (instantText == null || instantText.trim().isEmpty()) {
             return "-";
         }
         try {

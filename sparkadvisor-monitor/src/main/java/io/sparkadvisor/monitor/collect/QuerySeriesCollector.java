@@ -44,7 +44,7 @@ public final class QuerySeriesCollector {
         return app.sqlExecutions().stream()
                 .sorted(Comparator.comparingLong(SqlExecution::startTime))
                 .map(sql -> sample(app, sql, deepExecutionIds.contains(sql.executionId())))
-                .toList();
+                .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
     }
 
     private QuerySample sample(ApplicationModel app, SqlExecution sql, boolean deep) {
@@ -63,7 +63,7 @@ public final class QuerySeriesCollector {
 
         List<Finding> findings = deep
                 ? performanceAnalyzer.analyze(analysis, app.conf())
-                : List.of();
+                : new java.util.ArrayList<>();
         PredictionService.Predictions predictions = deep
                 ? predictionService.predict(analysis, app.conf())
                 : null;

@@ -127,7 +127,7 @@ public final class HtmlReportWriter {
         kv(h, t(zh, "Duration", "持续时间"), duration(s.wallClockMs()));
         kv(h, t(zh, "Stages", "Stage 数"), String.valueOf(s.stages().size()));
         h.append("</div>");
-        if (s.description() != null && !s.description().isBlank()) {
+        if (s.description() != null && !s.description().trim().isEmpty()) {
             h.append("<details><summary>").append(t(zh, "SQL text", "SQL 文本"))
                     .append("</summary><pre class=\"sql\">")
                     .append(esc(s.description())).append("</pre></details>");
@@ -269,17 +269,16 @@ public final class HtmlReportWriter {
                 .append("</p>");
 
         if (sp != null) {
-            String verdict = switch (sp.direction()) {
-                case FASTER_IF_INCREASED -> t(zh,
-                        "Increasing partitions is predicted to help", "预计增加分区数会有帮助");
-                case FASTER_IF_DECREASED -> t(zh,
-                        "Decreasing partitions is predicted to help", "预计减少分区数会有帮助");
-                case ALREADY_OPTIMAL -> t(zh,
-                        "Current partition count is near-optimal", "当前分区数接近最优");
-                case SKEW_LIMITED -> t(zh,
-                        "Skew-limited: changing partition count is unlikely to help",
-                        "受倾斜限制：调整分区数大概率无效");
-            };
+            String verdict;
+            if (sp.direction() == ShufflePartitionPrediction.Direction.FASTER_IF_INCREASED) {
+                verdict = t(zh, "Increasing partitions is predicted to help", "预计增加分区数会有帮助");
+            } else if (sp.direction() == ShufflePartitionPrediction.Direction.FASTER_IF_DECREASED) {
+                verdict = t(zh, "Decreasing partitions is predicted to help", "预计减少分区数会有帮助");
+            } else if (sp.direction() == ShufflePartitionPrediction.Direction.ALREADY_OPTIMAL) {
+                verdict = t(zh, "Current partition count is near-optimal", "当前分区数接近最优");
+            } else {
+                verdict = t(zh, "Skew-limited: changing partition count is unlikely to help", "受倾斜限制：调整分区数大概率无效");
+            }
             h.append("<div class=\"pred\"><h3>")
                     .append(t(zh, "Shuffle partitions", "Shuffle 分区"))
                     .append(" — stage ").append(sp.stageId())
@@ -369,17 +368,17 @@ public final class HtmlReportWriter {
         }
         h.append("<p class=\"muted\">").append(t(zh, "Source", "来源"))
                 .append(": <b>").append(esc(advice.provider())).append("</b></p>");
-        if (advice.summary() != null && !advice.summary().isBlank()) {
+        if (advice.summary() != null && !advice.summary().trim().isEmpty()) {
             h.append("<p>").append(esc(advice.summary())).append("</p>");
         }
         if (advice.recommendations() != null && !advice.recommendations().isEmpty()) {
             for (Recommendation rec : advice.recommendations()) {
                 h.append("<div class=\"rec\"><b>").append(rec.type()).append(":</b> ")
                         .append(esc(rec.action()));
-                if (rec.rationale() != null && !rec.rationale().isBlank()) {
+                if (rec.rationale() != null && !rec.rationale().trim().isEmpty()) {
                     h.append(" — <span class=\"muted\">").append(esc(rec.rationale())).append("</span>");
                 }
-                if (rec.expectedImpact() != null && !rec.expectedImpact().isBlank()) {
+                if (rec.expectedImpact() != null && !rec.expectedImpact().trim().isEmpty()) {
                     h.append(" <span class=\"muted\">[").append(esc(rec.expectedImpact())).append("]</span>");
                 }
                 h.append("</div>");

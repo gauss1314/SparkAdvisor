@@ -27,7 +27,7 @@ public final class LowParallelismRule implements Rule {
         SqlAnalysis sql = ctx.sql();
         double util = sql.coreUtilization();
         if (util >= ctx.thresholds().coreUtilLow() || util <= 0) {
-            return List.of();
+            return new java.util.ArrayList<Finding>();
         }
         Map<String, String> evidence = new LinkedHashMap<>();
         evidence.put("coreUtilization", String.format("%.2f", util));
@@ -52,7 +52,8 @@ public final class LowParallelismRule implements Rule {
                     "More partitions spread work across more cores.",
                     "Effective when tasks are large and few."));
         }
-        return List.of(new Finding(id(), "parallelism", Severity.WARN, null,
+        java.util.List<Finding> out = new java.util.ArrayList<Finding>();
+        out.add(new Finding(id(), "parallelism", Severity.WARN, null,
                 explanation, evidence, recs));
     }
 }

@@ -7,60 +7,14 @@ import io.sparkadvisor.core.predict.ExecutorScalingPrediction;
 import io.sparkadvisor.core.predict.ShufflePartitionPrediction;
 
 import java.util.List;
+import java.util.Objects;
 
-/**
- * The universal contract of SparkAdvisor. The CLI, the UI, and (future) the LLM advisor
- * all consume this single structure. HTML is just one rendering of it.
- *
- * <p>Deliberately free of any Spark types so it serializes cleanly to JSON and keeps the
- * report module decoupled from core's provided Spark dependency.
- *
- * @param app              application-level summary
- * @param targetSql        the SQL that was located/analyzed (null if app-level only)
- * @param findings         rule-engine findings (analyzer)
- * @param shufflePrediction shuffle-partition cost-model prediction (nullable)
- * @param executorPrediction executor-scaling prediction (nullable)
- * @param aiAdvice         LLM advisor output (null until F4 is implemented)
- * @param meta             provenance and confidence info
- */
-public record AnalysisResult(
-        AppSummary app,
-        SqlAnalysis targetSql,
-        List<Finding> findings,
-        ShufflePartitionPrediction shufflePrediction,
-        ExecutorScalingPrediction executorPrediction,
-        AiAdvice aiAdvice,
-        Meta meta) {
-
-    /** Return a copy with the AI advice block populated (records are immutable). */
-    public AnalysisResult withAiAdvice(AiAdvice advice) {
-        return new AnalysisResult(app, targetSql, findings, shufflePrediction,
-                executorPrediction, advice, meta);
-    }
-
-    /** Application-level summary. */
-    public record AppSummary(
-            String appId,
-            String appName,
-            long durationMs,
-            int sqlExecutionCount,
-            int jobCount,
-            int stageCount,
-            int availableCores) {
-    }
-
-    /** Provenance and confidence. */
-    public record Meta(
-            String sparkAdvisorVersion,
-            String generatedAt,
-            boolean incomplete,
-            String sourcePath) {
-    }
-
-    /** Placeholder for F4 LLM output; null until implemented. */
-    public record AiAdvice(
-            String provider,
-            String summary,
-            List<Recommendation> recommendations) {
-    }
-}
+public final class AnalysisResult {
+    public static final class AppSummary { private final String appId,appName; private final long durationMs; private final int sqlExecutionCount,jobCount,stageCount,availableCores; public AppSummary(String appId,String appName,long durationMs,int sqlExecutionCount,int jobCount,int stageCount,int availableCores){this.appId=appId;this.appName=appName;this.durationMs=durationMs;this.sqlExecutionCount=sqlExecutionCount;this.jobCount=jobCount;this.stageCount=stageCount;this.availableCores=availableCores;} public String appId(){return appId;} public String appName(){return appName;} public long durationMs(){return durationMs;} public int sqlExecutionCount(){return sqlExecutionCount;} public int jobCount(){return jobCount;} public int stageCount(){return stageCount;} public int availableCores(){return availableCores;} }
+    public static final class Meta { private final String sparkAdvisorVersion,generatedAt,sourcePath; private final boolean incomplete; public Meta(String sparkAdvisorVersion,String generatedAt,boolean incomplete,String sourcePath){this.sparkAdvisorVersion=sparkAdvisorVersion;this.generatedAt=generatedAt;this.incomplete=incomplete;this.sourcePath=sourcePath;} public String sparkAdvisorVersion(){return sparkAdvisorVersion;} public String generatedAt(){return generatedAt;} public boolean incomplete(){return incomplete;} public String sourcePath(){return sourcePath;} }
+    public static final class AiAdvice { private final String provider,summary; private final List<Recommendation> recommendations; public AiAdvice(String provider,String summary,List<Recommendation> recommendations){this.provider=provider;this.summary=summary;this.recommendations=recommendations;} public String provider(){return provider;} public String summary(){return summary;} public List<Recommendation> recommendations(){return recommendations;} }
+    private final AppSummary app; private final SqlAnalysis targetSql; private final List<Finding> findings; private final ShufflePartitionPrediction shufflePrediction; private final ExecutorScalingPrediction executorPrediction; private final AiAdvice aiAdvice; private final Meta meta;
+    public AnalysisResult(AppSummary app, SqlAnalysis targetSql, List<Finding> findings, ShufflePartitionPrediction shufflePrediction, ExecutorScalingPrediction executorPrediction, AiAdvice aiAdvice, Meta meta){this.app=app;this.targetSql=targetSql;this.findings=findings;this.shufflePrediction=shufflePrediction;this.executorPrediction=executorPrediction;this.aiAdvice=aiAdvice;this.meta=meta;}
+    public AppSummary app(){return app;} public SqlAnalysis targetSql(){return targetSql;} public List<Finding> findings(){return findings;} public ShufflePartitionPrediction shufflePrediction(){return shufflePrediction;} public ExecutorScalingPrediction executorPrediction(){return executorPrediction;} public AiAdvice aiAdvice(){return aiAdvice;} public Meta meta(){return meta;}
+    public AnalysisResult withAiAdvice(AiAdvice advice){ return new AnalysisResult(app,targetSql,findings,shufflePrediction,executorPrediction,advice,meta);} 
+    @Override public boolean equals(Object o){ if(this==o)return true; if(!(o instanceof AnalysisResult))return false; AnalysisResult that=(AnalysisResult)o; return Objects.equals(app,that.app)&&Objects.equals(targetSql,that.targetSql)&&Objects.equals(findings,that.findings)&&Objects.equals(shufflePrediction,that.shufflePrediction)&&Objects.equals(executorPrediction,that.executorPrediction)&&Objects.equals(aiAdvice,that.aiAdvice)&&Objects.equals(meta,that.meta);} @Override public int hashCode(){return Objects.hash(app,targetSql,findings,shufflePrediction,executorPrediction,aiAdvice,meta);} }

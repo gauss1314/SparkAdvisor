@@ -81,5 +81,16 @@ public final class EventLogParser {
     }
 
     /** One ordered piece of a rolling event log. */
-    public record EventLogPart(InputStream stream, String sourceName) {}
+    public static final class EventLogPart {
+        private final InputStream stream;
+        private final String sourceName;
+
+        public EventLogPart(InputStream stream, String sourceName) {
+            this.stream = stream;
+            this.sourceName = sourceName;
+        }
+
+        public InputStream stream() { return stream; }
+        public String sourceName() { return sourceName; }
+    }
 }

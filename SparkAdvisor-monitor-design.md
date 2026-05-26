@@ -268,7 +268,7 @@ java -jar sparkadvisor-cli.jar queue-report \
 
 ## 11. 结果契约：QueueAnalysisResult
 
-队列级统一契约（纯 Java record，无 Spark 类型，可 JSON 序列化；与单 SQL 的 `AnalysisResult` 平级）：
+队列级统一契约（纯 Java value type，无 Spark 类型，可 JSON 序列化；与单 SQL 的 `AnalysisResult` 平级）：
 
 ```mermaid
 classDiagram
@@ -384,7 +384,7 @@ sparkadvisor-monitor/
     ├── collect/QuerySample.java
     ├── contention/ContentionTimeline.java  # 扫描线争用归因
     ├── aggregate/QueueAggregator.java      # 分位/聚类/趋势/利用率
-    ├── aggregate/QueueAnalysisResult.java  # 队列级契约 + 子 record
+    ├── aggregate/QueueAnalysisResult.java  # 队列级契约 + 子 value type
     ├── rule/QueueRuleEngine.java           # Q1–Q7
     ├── rule/QueueRuleThresholds.java
     └── render/QueueHtmlWriter.java         # 复用 report 样式/基建

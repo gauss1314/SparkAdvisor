@@ -35,20 +35,20 @@ class ReportPipelineTest {
         var stats = new TaskMetricStats(dur, dist(1_000_000L, 1_000_000L, 50_000_000L),
                 Distribution.EMPTY, Distribution.EMPTY, Distribution.EMPTY,
                 dist(0, 0, 2_000_000_000L), Distribution.EMPTY, dist(50, 60, 2000), Distribution.EMPTY);
-        return new Stage(1, 0, 10, List.of(), 3000, 3500, 16000, 53_000_000L, 0, stats);
+        return new Stage(1, 0, 10, new java.util.ArrayList<>(), 3000, 3500, 16000, 53_000_000L, 0, stats);
     }
 
     private static ApplicationModel demoApp() {
         SqlExecution sql = new SqlExecution(42L, "20260521_demo",
                 "/* 20260521_demo */ select c, count(*) from t group by c", "", 1000L, 16000L,
-                false, List.of(7L));
-        Job job = new Job(7, 42L, List.of(1), 1000L, 16000L, false);
+                false, java.util.Arrays.asList(7L));
+        Job job = new Job(7, 42L, java.util.Arrays.asList(1), 1000L, 16000L, false);
         Map<String, String> conf = new LinkedHashMap<>();
         conf.put("spark.executor.instances", "4");
         conf.put("spark.executor.cores", "2");
         return new ApplicationModel("app-demo", "Demo", 0L, 17000L, false, conf,
-                List.of(sql), List.of(job), List.of(skewedStage()), java.util.List.of(),
-                java.util.List.of());
+                java.util.Arrays.asList(sql), java.util.Arrays.asList(job), java.util.Arrays.asList(skewedStage()), java.util.new java.util.ArrayList<>(),
+                java.util.new java.util.ArrayList<>());
     }
 
     @Test

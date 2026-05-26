@@ -29,14 +29,14 @@ class AdvisorTest {
         var stage = new StageAnalysis(1, 10, 9000, 9000, 500, 14000, 18.0, 0,
                 53_000_000L, 0, 0, 0.0, 0, 0, 0);
         var sql = new SqlAnalysis(42L, "stmt_x", "select 1", "", 15000, 9000, 2000,
-                0.67, 0.8, List.of(stage));
+                0.67, 0.8, java.util.Arrays.asList(stage));
         var app = new AnalysisResult.AppSummary("app", "n", 15000, 1, 1, 1, 8);
         var meta = new AnalysisResult.Meta("0.1.0", "now", false, "hdfs:///x");
         var finding = new Finding("R1_DATA_SKEW", "skew", Severity.CRITICAL, 1,
-                "Stage 1 is skewed.", Map.of("durationSkewRatio", "18.0"),
-                List.of(Recommendation.conf("set spark.sql.adaptive.skewJoin.enabled=true",
+                "Stage 1 is skewed.", java.util.Collections.singletonMap("durationSkewRatio", "18.0"),
+                java.util.Arrays.asList(Recommendation.conf("set spark.sql.adaptive.skewJoin.enabled=true",
                         "split skewed partitions", "big win")));
-        return new AnalysisResult(app, sql, List.of(finding), null, null, null, meta);
+        return new AnalysisResult(app, sql, java.util.Arrays.asList(finding), null, null, null, meta);
     }
 
     @Test
@@ -52,10 +52,10 @@ class AdvisorTest {
     void ruleBasedHandlesNoFindings() {
         var stage = new StageAnalysis(1, 8, 1000, 520, 500, 4000, 1.04, 1.1, 0, 0, 0,
                 0.02, 0, 0, 0);
-        var sql = new SqlAnalysis(1, "s", "select 1", "", 1000, 900, 800, 0.1, 0.85, List.of(stage));
+        var sql = new SqlAnalysis(1, "s", "select 1", "", 1000, 900, 800, 0.1, 0.85, java.util.Arrays.asList(stage));
         var app = new AnalysisResult.AppSummary("a", "n", 1000, 1, 1, 1, 8);
         var meta = new AnalysisResult.Meta("0.1.0", "now", false, "x");
-        var r = new AnalysisResult(app, sql, List.of(), null, null, null, meta);
+        var r = new AnalysisResult(app, sql, new java.util.ArrayList<>(), null, null, null, meta);
         var advice = new RuleBasedAdvisor().advise(r);
         assertTrue(advice.summary().toLowerCase().contains("healthy")
                 || advice.summary().toLowerCase().contains("no rule findings"));

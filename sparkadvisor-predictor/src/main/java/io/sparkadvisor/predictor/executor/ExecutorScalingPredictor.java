@@ -34,10 +34,10 @@ public final class ExecutorScalingPredictor {
 
         return new ExecutorScalingPrediction(
                 currentCores, estCurrent, knee, curve, Confidence.MEDIUM,
-                List.of(
+                new java.util.ArrayList<String>(java.util.Arrays.asList(
                         "Each stage modeled as max(longestTask, waves * avgTask).",
                         "Skew caps the achievable speedup (longest task is irreducible).",
-                        "Assumes adding cores does not change data layout or shuffle cost."));
+                        "Assumes adding cores does not change data layout or shuffle cost."))) ;
     }
 
     private long estimateWallMs(SqlAnalysis sql, int cores) {

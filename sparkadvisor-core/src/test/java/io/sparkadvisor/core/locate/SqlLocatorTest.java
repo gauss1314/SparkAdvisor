@@ -14,12 +14,12 @@ class SqlLocatorTest {
 
     private static SqlExecution exec(long id, String stmtId, long durMs) {
         return new SqlExecution(id, stmtId, "/* " + stmtId + " */ select 1", "",
-                1000L, 1000L + durMs, false, List.of());
+                1000L, 1000L + durMs, false, new java.util.ArrayList<>());
     }
 
     private static ApplicationModel appWith(SqlExecution... execs) {
         return new ApplicationModel("app-1", "test", 0, 0, false,
-                Map.of(), List.of(execs), List.of(), List.of(), List.of(), List.of());
+                new java.util.HashMap<>(), java.util.Arrays.asList(execs), new java.util.ArrayList<>(), new java.util.ArrayList<>(), new java.util.ArrayList<>(), new java.util.ArrayList<>());
     }
 
     @Test

@@ -30,15 +30,15 @@ public final class SqlLocator {
 
     /** @return matches ordered by wall-clock duration descending; empty if none. */
     public List<SqlExecution> locate(String id) {
-        if (id == null || id.isBlank()) {
-            return List.of();
+        if (id == null || id.trim().isEmpty()) {
+            return new java.util.ArrayList<SqlExecution>();
         }
         String key = id.trim();
 
         List<SqlExecution> byStatement = app.sqlExecutions().stream()
                 .filter(s -> key.equals(s.statementId()))
                 .sorted(Comparator.comparingLong(SqlExecution::wallClockMs).reversed())
-                .toList();
+                .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
 
         if (!byStatement.isEmpty()) {
             return byStatement;
@@ -48,9 +48,9 @@ public final class SqlLocator {
             long execId = Long.parseLong(key);
             return app.sqlExecutions().stream()
                     .filter(s -> s.executionId() == execId)
-                    .toList();
+                    .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
         }
-        return List.of();
+        return new java.util.ArrayList<SqlExecution>();
     }
 
     /** Convenience: the single slowest match, or empty. */

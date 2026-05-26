@@ -28,7 +28,7 @@ public final class RuleBasedAdvisor implements TuningAdvisor {
 
     @Override
     public AnalysisResult.AiAdvice advise(AnalysisResult r) {
-        List<Finding> findings = r.findings() == null ? List.of() : r.findings();
+        List<Finding> findings = r.findings() == null ? new java.util.ArrayList<>() : r.findings();
         String summary = summarize(r, findings);
 
         // Consolidate recommendations: criticals first, then warns, de-duplicated by action.

@@ -1,25 +1,7 @@
 package io.sparkadvisor.monitor.rule;
 
-/**
- * Centralized thresholds for queue-level rules. These are deliberately separate from the
- * single-SQL {@code RuleThresholds}: queue recommendations require statistical support across
- * many queries, not just one bad stage.
- */
-public record QueueRuleThresholds(
-        int minAnalyzedQueries,
-        double commonBottleneckPct,
-        double mixedPartitionPct,
-        double highUtilization,
-        double lowUtilization,
-        double contentionLimitedPct) {
-
-    public static QueueRuleThresholds defaults() {
-        return new QueueRuleThresholds(
-                5,
-                0.30,
-                0.15,
-                0.85,
-                0.35,
-                0.25);
-    }
-}
+public final class QueueRuleThresholds {
+    private final int minAnalyzedQueries; private final double commonBottleneckPct,mixedPartitionPct,highUtilization,lowUtilization,contentionLimitedPct;
+    public QueueRuleThresholds(int minAnalyzedQueries,double commonBottleneckPct,double mixedPartitionPct,double highUtilization,double lowUtilization,double contentionLimitedPct){this.minAnalyzedQueries=minAnalyzedQueries;this.commonBottleneckPct=commonBottleneckPct;this.mixedPartitionPct=mixedPartitionPct;this.highUtilization=highUtilization;this.lowUtilization=lowUtilization;this.contentionLimitedPct=contentionLimitedPct;}
+    public int minAnalyzedQueries(){return minAnalyzedQueries;} public double commonBottleneckPct(){return commonBottleneckPct;} public double mixedPartitionPct(){return mixedPartitionPct;} public double highUtilization(){return highUtilization;} public double lowUtilization(){return lowUtilization;} public double contentionLimitedPct(){return contentionLimitedPct;}
+    public static QueueRuleThresholds defaults(){ return new QueueRuleThresholds(5,0.30,0.15,0.85,0.35,0.25);} }

@@ -1,40 +1,10 @@
 package io.sparkadvisor.core.analyze;
 
-import java.util.List;
+import java.util.*;
 
-/**
- * Aggregated analytical view of a single SQL execution: its stages plus the three
- * reference timelines that frame the optimization headroom.
- *
- * <p>The three timelines (see design doc §7.2):
- * <ul>
- *   <li>{@code wallClockMs}     — actual observed duration</li>
- *   <li>{@code criticalPathMs}  — sum of per-stage max-task times along the longest
- *       dependency path; the lower bound under infinite executors</li>
- *   <li>{@code idealMs}         — same path with perfectly balanced tasks
- *       (totalTaskTime / availableCores per stage); the lower bound with zero skew</li>
- * </ul>
- * Relationship: {@code idealMs <= criticalPathMs <= wallClockMs}.
- *
- * @param deviation (wallClock - criticalPath) / criticalPath; distance from the
- *                  infinite-executor lower bound (0 if criticalPath is 0)
- */
-public record SqlAnalysis(
-        long executionId,
-        String statementId,
-        String description,
-        String physicalPlanText,
-        long wallClockMs,
-        long criticalPathMs,
-        long idealMs,
-        double deviation,
-        double coreUtilization,
-        List<StageAnalysis> stages) {
-
-    /** The stages sorted by wall-clock time, slowest first. */
-    public List<StageAnalysis> stagesByDurationDesc() {
-        return stages.stream()
-                .sorted(java.util.Comparator.comparingLong(StageAnalysis::wallClockMs).reversed())
-                .toList();
-    }
+public final class SqlAnalysis {
+    private final long executionId,wallClockMs,criticalPathMs,idealMs; private final String statementId,description,physicalPlanText; private final double deviation,coreUtilization; private final List<StageAnalysis> stages;
+    public SqlAnalysis(long executionId,String statementId,String description,String physicalPlanText,long wallClockMs,long criticalPathMs,long idealMs,double deviation,double coreUtilization,List<StageAnalysis> stages){this.executionId=executionId;this.statementId=statementId;this.description=description;this.physicalPlanText=physicalPlanText;this.wallClockMs=wallClockMs;this.criticalPathMs=criticalPathMs;this.idealMs=idealMs;this.deviation=deviation;this.coreUtilization=coreUtilization;this.stages=stages;}
+    public long executionId(){return executionId;} public String statementId(){return statementId;} public String description(){return description;} public String physicalPlanText(){return physicalPlanText;} public long wallClockMs(){return wallClockMs;} public long criticalPathMs(){return criticalPathMs;} public long idealMs(){return idealMs;} public double deviation(){return deviation;} public double coreUtilization(){return coreUtilization;} public List<StageAnalysis> stages(){return stages;}
+    public List<StageAnalysis> stagesByDurationDesc(){List<StageAnalysis> out=new ArrayList<StageAnalysis>(stages); Collections.sort(out,new Comparator<StageAnalysis>(){public int compare(StageAnalysis a,StageAnalysis b){return Long.compare(b.wallClockMs(),a.wallClockMs());}}); return out;}
 }

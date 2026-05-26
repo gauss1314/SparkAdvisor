@@ -31,19 +31,20 @@ public final class RuleEngine {
     }
 
     public RuleEngine(List<Rule> rules) {
-        this.rules = List.copyOf(rules);
+        this.rules = new ArrayList<Rule>(rules);
     }
 
     public static List<Rule> defaultRules() {
-        return List.of(
-                new DataSkewRule(),
-                new ExcessiveSpillRule(),
-                new LowParallelismRule(),
-                new OverParallelismRule(),
-                new SmallFilesRule(),
-                new GcPressureRule(),
-                new SchedulingDelayRule(),
-                new BroadcastJoinRule());
+        List<Rule> list = new ArrayList<Rule>();
+        list.add(new DataSkewRule());
+        list.add(new ExcessiveSpillRule());
+        list.add(new LowParallelismRule());
+        list.add(new OverParallelismRule());
+        list.add(new SmallFilesRule());
+        list.add(new GcPressureRule());
+        list.add(new SchedulingDelayRule());
+        list.add(new BroadcastJoinRule());
+        return list;
     }
 
     public List<Finding> run(RuleContext ctx) {

@@ -12,12 +12,12 @@ final class Html {
         for (int i = 0; i < s.length(); i++) {
             char c = s.charAt(i);
             switch (c) {
-                case '&' -> b.append("&amp;");
-                case '<' -> b.append("&lt;");
-                case '>' -> b.append("&gt;");
-                case '"' -> b.append("&quot;");
-                case '\'' -> b.append("&#39;");
-                default -> b.append(c);
+                case '&': b.append("&amp;"); break;
+                case '<': b.append("&lt;"); break;
+                case '>': b.append("&gt;"); break;
+                case '"': b.append("&quot;"); break;
+                case '\'': b.append("&#39;"); break;
+                default: b.append(c); break;
             }
         }
         return b.toString();

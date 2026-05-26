@@ -44,7 +44,7 @@ public final class SparkAdvisorHistoryPlugin implements AppHistoryServerPlugin {
     public Seq<SparkListener> createListeners(SparkConf conf, ElementTrackingStore store) {
         // Strategy B: we do our own parsing in setupUI; no listeners needed here.
         // VERIFY@3.5.1: return type is scala.collection.Seq[SparkListener].
-        return JavaConverters.asScalaBuffer(new java.util.ArrayList<SparkListener>()).toList();
+        return JavaConverters.asScalaBuffer(new java.util.ArrayList<SparkListener>()).toSeq();
     }
 
     @Override

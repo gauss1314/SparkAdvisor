@@ -16,13 +16,17 @@ package io.sparkadvisor.predictor.costmodel;
  *
  * <p>All estimates are approximate; callers must surface confidence and assumptions.
  */
-public record ShuffleCostModel(
-        long totalShuffleBytes, // B
-        int cores,              // C
-        double fixedOverheadMs, // o
-        double throughputBytesPerMs, // r
-        long perTaskMemoryBudgetBytes // M
-) {
+public final class ShuffleCostModel {
+    private final long totalShuffleBytes;
+    private final int cores;
+    private final double fixedOverheadMs;
+    private final double throughputBytesPerMs;
+    private final long perTaskMemoryBudgetBytes;
+
+    public ShuffleCostModel(long totalShuffleBytes, int cores, double fixedOverheadMs, double throughputBytesPerMs, long perTaskMemoryBudgetBytes){
+        this.totalShuffleBytes=totalShuffleBytes; this.cores=cores; this.fixedOverheadMs=fixedOverheadMs; this.throughputBytesPerMs=throughputBytesPerMs; this.perTaskMemoryBudgetBytes=perTaskMemoryBudgetBytes;
+    }
+    public long totalShuffleBytes(){return totalShuffleBytes;} public int cores(){return cores;} public double fixedOverheadMs(){return fixedOverheadMs;} public double throughputBytesPerMs(){return throughputBytesPerMs;} public long perTaskMemoryBudgetBytes(){return perTaskMemoryBudgetBytes;}
 
     /** Estimated stage time (ms) at partition count p. */
     public long estimateMs(int p) {

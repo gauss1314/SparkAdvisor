@@ -1,50 +1,13 @@
 package io.sparkadvisor.core.predict;
 
 import java.util.List;
+import java.util.Objects;
 
-/**
- * Result of the shuffle-partition "will it get faster or slower?" prediction for one stage.
- *
- * <p>This is a cost-model ESTIMATE. {@code assumptions} and {@code confidence} MUST be shown
- * to the user; {@code reversalNote} explains under what condition the conclusion would flip.
- *
- * @param stageId           the shuffle stage analyzed
- * @param currentPartitions effective partition count observed (post-AQE when applicable)
- * @param estCurrentMs       estimated stage time at the current partition count
- * @param recommendedPartitions partition count minimizing estimated time
- * @param estRecommendedMs   estimated stage time at the recommended count
- * @param direction         FASTER_IF_INCREASED / FASTER_IF_DECREASED / ALREADY_OPTIMAL / SKEW_LIMITED
- * @param curve             sampled (partitions, estMs) points for plotting
- * @param tunedKnob         the actual config knob to change (AQE-aware)
- * @param assumptions       human-readable assumptions behind the model
- * @param reversalNote      condition under which the conclusion would reverse
- */
-public record ShufflePartitionPrediction(
-        int stageId,
-        int currentPartitions,
-        long estCurrentMs,
-        int recommendedPartitions,
-        long estRecommendedMs,
-        Direction direction,
-        List<Point> curve,
-        String tunedKnob,
-        Confidence confidence,
-        List<String> assumptions,
-        String reversalNote) {
-
-    public enum Direction {
-        FASTER_IF_INCREASED,
-        FASTER_IF_DECREASED,
-        ALREADY_OPTIMAL,
-        SKEW_LIMITED
-    }
-
-    /** One sampled point on the partitions-vs-time curve. */
-    public record Point(int partitions, long estMs) {}
-
-    /** Estimated speedup as a fraction (0.25 == 25% faster). Negative means slower. */
-    public double estimatedSpeedup() {
-        if (estCurrentMs <= 0) return 0.0;
-        return (double) (estCurrentMs - estRecommendedMs) / (double) estCurrentMs;
-    }
-}
+public final class ShufflePartitionPrediction {
+    public enum Direction { FASTER_IF_INCREASED, FASTER_IF_DECREASED, ALREADY_OPTIMAL, SKEW_LIMITED }
+    public static final class Point { private final int partitions; private final long estMs; public Point(int partitions,long estMs){this.partitions=partitions;this.estMs=estMs;} public int partitions(){return partitions;} public long estMs(){return estMs;} }
+    private final int stageId,currentPartitions,recommendedPartitions; private final long estCurrentMs,estRecommendedMs; private final Direction direction; private final List<Point> curve; private final String tunedKnob; private final Confidence confidence; private final List<String> assumptions; private final String reversalNote;
+    public ShufflePartitionPrediction(int stageId,int currentPartitions,long estCurrentMs,int recommendedPartitions,long estRecommendedMs,Direction direction,List<Point> curve,String tunedKnob,Confidence confidence,List<String> assumptions,String reversalNote){this.stageId=stageId;this.currentPartitions=currentPartitions;this.estCurrentMs=estCurrentMs;this.recommendedPartitions=recommendedPartitions;this.estRecommendedMs=estRecommendedMs;this.direction=direction;this.curve=curve;this.tunedKnob=tunedKnob;this.confidence=confidence;this.assumptions=assumptions;this.reversalNote=reversalNote;}
+    public int stageId(){return stageId;} public int currentPartitions(){return currentPartitions;} public long estCurrentMs(){return estCurrentMs;} public int recommendedPartitions(){return recommendedPartitions;} public long estRecommendedMs(){return estRecommendedMs;} public Direction direction(){return direction;} public List<Point> curve(){return curve;} public String tunedKnob(){return tunedKnob;} public Confidence confidence(){return confidence;} public List<String> assumptions(){return assumptions;} public String reversalNote(){return reversalNote;}
+    public double estimatedSpeedup(){ if(estCurrentMs<=0)return 0.0; return (double)(estCurrentMs-estRecommendedMs)/(double)estCurrentMs; }
+    @Override public boolean equals(Object o){ if(this==o)return true; if(!(o instanceof ShufflePartitionPrediction))return false; ShufflePartitionPrediction that=(ShufflePartitionPrediction)o; return stageId==that.stageId&&currentPartitions==that.currentPartitions&&estCurrentMs==that.estCurrentMs&&recommendedPartitions==that.recommendedPartitions&&estRecommendedMs==that.estRecommendedMs&&direction==that.direction&&Objects.equals(curve,that.curve)&&Objects.equals(tunedKnob,that.tunedKnob)&&confidence==that.confidence&&Objects.equals(assumptions,that.assumptions)&&Objects.equals(reversalNote,that.reversalNote);} @Override public int hashCode(){ return Objects.hash(stageId,currentPartitions,estCurrentMs,recommendedPartitions,estRecommendedMs,direction,curve,tunedKnob,confidence,assumptions,reversalNote);} }

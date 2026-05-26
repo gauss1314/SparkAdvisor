@@ -54,7 +54,7 @@ public final class QueueReportCommand implements Callable<Integer> {
     @Override
     public Integer call() throws Exception {
         Configuration conf = new Configuration();
-        if (hadoopConfDir != null && !hadoopConfDir.isBlank()) {
+        if (hadoopConfDir != null && !hadoopConfDir.trim().isEmpty()) {
             conf.addResource(new org.apache.hadoop.fs.Path(hadoopConfDir + "/core-site.xml"));
             conf.addResource(new org.apache.hadoop.fs.Path(hadoopConfDir + "/hdfs-site.xml"));
         }
@@ -67,20 +67,20 @@ public final class QueueReportCommand implements Callable<Integer> {
         }
         String fmt = format == null ? "html" : format.toLowerCase();
         Path outPath = Path.of(out != null ? out : "queue-report." + fmt);
-        switch (fmt) {
-            case "json" -> new QueueJsonWriter().write(result, outPath);
-            case "html" -> new QueueHtmlWriter().write(result, outPath);
-            default -> {
-                System.err.println("[error] Unknown --format: " + format + " (use html|json)");
-                return 2;
-            }
+        if ("json".equals(fmt)) {
+            new QueueJsonWriter().write(result, outPath);
+        } else if ("html".equals(fmt)) {
+            new QueueHtmlWriter().write(result, outPath);
+        } else {
+            System.err.println("[error] Unknown --format: " + format + " (use html|json)");
+            return 2;
         }
         System.out.println("Queue report written: " + outPath.toAbsolutePath());
         return 0;
     }
 
     static long parseDurationMs(String value) {
-        if (value == null || value.isBlank()) {
+        if (value == null || value.trim().isEmpty()) {
             return QueueAnalyzer.DEFAULT_BUCKET_MS;
         }
         String v = value.trim().toLowerCase();

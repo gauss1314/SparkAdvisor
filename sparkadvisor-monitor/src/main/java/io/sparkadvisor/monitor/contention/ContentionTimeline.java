@@ -31,10 +31,10 @@ public final class ContentionTimeline {
                                Map<Long, QueryContention> queryContention,
                                List<Window> hotspots) {
         this.totalCores = Math.max(1, totalCores);
-        this.segments = List.copyOf(segments);
-        this.bucketUtilization = List.copyOf(bucketUtilization);
-        this.queryContention = Map.copyOf(queryContention);
-        this.hotspots = List.copyOf(hotspots);
+        this.segments = new java.util.ArrayList<>(segments);
+        this.bucketUtilization = new java.util.ArrayList<>(bucketUtilization);
+        this.queryContention = new java.util.LinkedHashMap<>(queryContention);
+        this.hotspots = new java.util.ArrayList<>(hotspots);
     }
 
     public static ContentionTimeline from(List<TaskInterval> tasks,
@@ -45,9 +45,9 @@ public final class ContentionTimeline {
                                           long windowEnd) {
         int cores = Math.max(1, totalCores);
         long bucket = Math.max(60_000L, bucketMs);
-        List<TaskInterval> validTasks = tasks == null ? List.of() : tasks.stream()
+        List<TaskInterval> validTasks = tasks == null ? new java.util.ArrayList<>() : tasks.stream()
                 .filter(t -> t.finishTime() > t.launchTime())
-                .toList();
+                .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
         if (validTasks.isEmpty()) {
             return empty(queries, cores, bucket, windowStart, windowEnd);
         }
@@ -105,7 +105,7 @@ public final class ContentionTimeline {
         List<Window> hot = buckets.stream()
                 .filter(b -> b.avgUtilization() >= HOT_UTILIZATION)
                 .map(b -> new Window(b.bucketStart(), b.bucketEnd(), b.avgUtilization()))
-                .toList();
+                .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
 
         // totalBusyCoreMs is intentionally computed during scan to keep the exact integral in
         // one place; segments carry the public time series used by downstream renderers.
@@ -129,7 +129,7 @@ public final class ContentionTimeline {
                         new QueryContention(q.executionId(), 0.0, 0.0, 0L, false));
             }
         }
-        return new ContentionTimeline(cores, List.of(), buckets, contention, List.of());
+        return new ContentionTimeline(cores, new java.util.ArrayList<>(), buckets, contention, new java.util.ArrayList<>());
     }
 
     private static Map<Long, QueryContention> buildQueryContention(List<QuerySample> queries,
@@ -216,19 +216,13 @@ public final class ContentionTimeline {
         return hotspots;
     }
 
-    private record Event(long time, int delta, Long sqlExecutionId) {}
+    private static final class Event { private final long time; private final int delta; private final Long sqlExecutionId; Event(long time,int delta,Long sqlExecutionId){this.time=time;this.delta=delta;this.sqlExecutionId=sqlExecutionId;} long time(){return time;} int delta(){return delta;} Long sqlExecutionId(){return sqlExecutionId;} }
 
-    public record Segment(long startTime, long endTime, int busyCores, double utilization) {}
+    public static final class Segment { private final long startTime,endTime; private final int busyCores; private final double utilization; public Segment(long startTime,long endTime,int busyCores,double utilization){this.startTime=startTime;this.endTime=endTime;this.busyCores=busyCores;this.utilization=utilization;} public long startTime(){return startTime;} public long endTime(){return endTime;} public int busyCores(){return busyCores;} public double utilization(){return utilization;} }
 
-    public record BucketUtilization(long bucketStart, long bucketEnd, double avgUtilization) {}
+    public static final class BucketUtilization { private final long bucketStart,bucketEnd; private final double avgUtilization; public BucketUtilization(long bucketStart,long bucketEnd,double avgUtilization){this.bucketStart=bucketStart;this.bucketEnd=bucketEnd;this.avgUtilization=avgUtilization;} public long bucketStart(){return bucketStart;} public long bucketEnd(){return bucketEnd;} public double avgUtilization(){return avgUtilization;} }
 
-    public record QueryContention(
-            long executionId,
-            double avgPoolUtilization,
-            double ownCoreShare,
-            long ownCoreMs,
-            boolean contentionLimited) {
-    }
+    public static final class QueryContention { private final long executionId,ownCoreMs; private final double avgPoolUtilization,ownCoreShare; private final boolean contentionLimited; public QueryContention(long executionId,double avgPoolUtilization,double ownCoreShare,long ownCoreMs,boolean contentionLimited){this.executionId=executionId;this.avgPoolUtilization=avgPoolUtilization;this.ownCoreShare=ownCoreShare;this.ownCoreMs=ownCoreMs;this.contentionLimited=contentionLimited;} public long executionId(){return executionId;} public double avgPoolUtilization(){return avgPoolUtilization;} public double ownCoreShare(){return ownCoreShare;} public long ownCoreMs(){return ownCoreMs;} public boolean contentionLimited(){return contentionLimited;} }
 
-    public record Window(long startTime, long endTime, double avgUtilization) {}
+    public static final class Window { private final long startTime,endTime; private final double avgUtilization; public Window(long startTime,long endTime,double avgUtilization){this.startTime=startTime;this.endTime=endTime;this.avgUtilization=avgUtilization;} public long startTime(){return startTime;} public long endTime(){return endTime;} public double avgUtilization(){return avgUtilization;} }
 }

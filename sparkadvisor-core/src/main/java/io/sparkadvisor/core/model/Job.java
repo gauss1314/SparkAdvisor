@@ -1,22 +1,34 @@
 package io.sparkadvisor.core.model;
 
 import java.util.List;
+import java.util.Objects;
 
-/**
- * A Spark job. {@code sqlExecutionId} links it to a {@link SqlExecution} when the
- * job was launched from a SQL execution (read from the job's
- * {@code spark.sql.execution.id} property).
- */
-public record Job(
-        int jobId,
-        Long sqlExecutionId,
-        List<Integer> stageIds,
-        long submissionTime,
-        long completionTime,
-        boolean failed) {
+public final class Job {
+    private final int jobId;
+    private final Long sqlExecutionId;
+    private final List<Integer> stageIds;
+    private final long submissionTime;
+    private final long completionTime;
+    private final boolean failed;
 
-    public long wallClockMs() {
-        if (submissionTime <= 0 || completionTime <= 0) return 0;
-        return completionTime - submissionTime;
+    public Job(int jobId, Long sqlExecutionId, List<Integer> stageIds, long submissionTime, long completionTime, boolean failed) {
+        this.jobId = jobId;
+        this.sqlExecutionId = sqlExecutionId;
+        this.stageIds = stageIds;
+        this.submissionTime = submissionTime;
+        this.completionTime = completionTime;
+        this.failed = failed;
     }
+
+    public int jobId() { return jobId; }
+    public Long sqlExecutionId() { return sqlExecutionId; }
+    public List<Integer> stageIds() { return stageIds; }
+    public long submissionTime() { return submissionTime; }
+    public long completionTime() { return completionTime; }
+    public boolean failed() { return failed; }
+
+    public long wallClockMs() { return (submissionTime <= 0 || completionTime <= 0) ? 0 : completionTime - submissionTime; }
+
+    @Override public boolean equals(Object o) { if (this == o) return true; if (!(o instanceof Job)) return false; Job job = (Job) o; return jobId == job.jobId && submissionTime == job.submissionTime && completionTime == job.completionTime && failed == job.failed && Objects.equals(sqlExecutionId, job.sqlExecutionId) && Objects.equals(stageIds, job.stageIds); }
+    @Override public int hashCode() { return Objects.hash(jobId, sqlExecutionId, stageIds, submissionTime, completionTime, failed); }
 }

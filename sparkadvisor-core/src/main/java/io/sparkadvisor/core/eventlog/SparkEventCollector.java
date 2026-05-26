@@ -225,10 +225,17 @@ public final class SparkEventCollector extends SparkListener {
     public void onOtherEvent(SparkListenerEvent event) {
         String cls = event.getClass().getName();
         switch (cls) {
-            case SQL_EXEC_START -> handleSqlStart(event);
-            case SQL_EXEC_END -> handleSqlEnd(event);
-            case THRIFT_OP_START -> handleThriftOpStart(event);
-            default -> { /* ignore other events */ }
+            case SQL_EXEC_START:
+                handleSqlStart(event);
+                break;
+            case SQL_EXEC_END:
+                handleSqlEnd(event);
+                break;
+            case THRIFT_OP_START:
+                handleThriftOpStart(event);
+                break;
+            default:
+                break;
         }
     }
 
@@ -277,7 +284,7 @@ public final class SparkEventCollector extends SparkListener {
             boolean execIncomplete = b.startTime == 0L || b.endTime == 0L;
             execList.add(new SqlExecution(
                     b.executionId, b.statementId, b.description, b.physicalPlanText,
-                    b.startTime, b.endTime, execIncomplete, List.copyOf(b.jobIds)));
+                    b.startTime, b.endTime, execIncomplete, new ArrayList<>(b.jobIds)));
         }
         List<Stage> stageList = new ArrayList<>();
         for (StageBuilder b : stages.values()) {
@@ -285,8 +292,8 @@ public final class SparkEventCollector extends SparkListener {
         }
         return new ApplicationModel(
                 appId, appName, appStart, appEnd, incomplete,
-                Map.copyOf(conf), List.copyOf(execList), List.copyOf(jobs), List.copyOf(stageList),
-                List.copyOf(executorEvents), List.copyOf(taskIntervals));
+                new LinkedHashMap<>(conf), new ArrayList<>(execList), new ArrayList<>(jobs), new ArrayList<>(stageList),
+                new ArrayList<>(executorEvents), new ArrayList<>(taskIntervals));
     }
 
     // ---- Mutable builders ------------------------------------------------------
@@ -309,7 +316,7 @@ public final class SparkEventCollector extends SparkListener {
         int stageId;
         int attemptId;
         int numTasks;
-        List<Integer> parentStageIds = List.of();
+        List<Integer> parentStageIds = new ArrayList<Integer>();
         long submissionTime = 0L;
         long firstTaskLaunch = 0L;
         long completionTime = 0L;

@@ -36,15 +36,15 @@ public final class AdviceResponseParser {
                             n.path("expectedImpact").asText(null)));
                 }
             }
-            if (summary.isBlank() && recs.isEmpty()) {
+            if (summary.trim().isEmpty() && recs.isEmpty()) {
                 // Parsed but empty -> treat raw as summary.
-                return new AnalysisResult.AiAdvice(provider, raw == null ? "" : raw.trim(), List.of());
+                return new AnalysisResult.AiAdvice(provider, raw == null ? "" : raw.trim(), new java.util.ArrayList<Recommendation>());
             }
             return new AnalysisResult.AiAdvice(provider, summary, recs);
         } catch (Exception e) {
             // Unparseable -> degrade gracefully, surface the raw text.
             return new AnalysisResult.AiAdvice(provider,
-                    raw == null ? "(no response)" : raw.trim(), List.of());
+                    raw == null ? "(no response)" : raw.trim(), new java.util.ArrayList<Recommendation>());
         }
     }
 

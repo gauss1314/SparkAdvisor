@@ -43,17 +43,17 @@ class QueueAnalyzerTest {
                 Distribution.EMPTY,
                 Distribution.EMPTY,
                 Distribution.EMPTY);
-        return new Stage(id, 0, tasks, List.of(), submit, firstLaunch, complete,
+        return new Stage(id, 0, tasks, new java.util.ArrayList<>(), submit, firstLaunch, complete,
                 shuffleRead.sum(), 0L, stats);
     }
 
     private static ApplicationModel queueApp() {
         SqlExecution hog = new SqlExecution(1L, "big",
-                "/* big */ select * from large_join", "", 1L, 60_000L, false, List.of(1L));
+                "/* big */ select * from large_join", "", 1L, 60_000L, false, java.util.Arrays.asList(1L));
         SqlExecution skewed = new SqlExecution(2L, "small",
-                "/* small */ select * from skewed_join", "", 10_000L, 60_000L, false, List.of(2L));
-        Job job1 = new Job(1, 1L, List.of(1), 1L, 60_000L, false);
-        Job job2 = new Job(2, 2L, List.of(2), 10_000L, 60_000L, false);
+                "/* small */ select * from skewed_join", "", 10_000L, 60_000L, false, java.util.Arrays.asList(2L));
+        Job job1 = new Job(1, 1L, java.util.Arrays.asList(1), 1L, 60_000L, false);
+        Job job2 = new Job(2, 2L, java.util.Arrays.asList(2), 10_000L, 60_000L, false);
         Stage hogStage = stage(1, 3, 1L, 1L, 60_000L,
                 dist(60_000, 60_000, 60_000),
                 dist(1024L, 1024L, 1024L));
@@ -64,11 +64,11 @@ class QueueAnalyzerTest {
         conf.put("spark.executor.instances", "2");
         conf.put("spark.executor.cores", "2");
         return new ApplicationModel("app-queue", "Queue", 1L, 60_000L, false, conf,
-                List.of(hog, skewed),
-                List.of(job1, job2),
-                List.of(hogStage, skewStage),
-                List.of(),
-                List.of(
+                java.util.Arrays.asList(hog, skewed),
+                java.util.Arrays.asList(job1, job2),
+                java.util.Arrays.asList(hogStage, skewStage),
+                new java.util.ArrayList<>(),
+                java.util.Arrays.asList(
                         new TaskInterval(1, 1, 0, 1L, "1", 1L, 60_000L),
                         new TaskInterval(2, 1, 0, 1L, "2", 1L, 60_000L),
                         new TaskInterval(3, 1, 0, 1L, "3", 1L, 60_000L),

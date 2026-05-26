@@ -37,7 +37,7 @@ public final class AnalysisResultBuilder {
     public AnalysisResult build(SqlExecution target) {
         SqlAnalysis sqlAnalysis = (target == null) ? null : aggregator.analyze(target);
         List<Finding> findings = (sqlAnalysis == null)
-                ? List.of()
+                ? new java.util.ArrayList<>()
                 : performanceAnalyzer.analyze(sqlAnalysis, app.conf());
         PredictionService.Predictions predictions = (sqlAnalysis == null)
                 ? new PredictionService.Predictions(null, null)

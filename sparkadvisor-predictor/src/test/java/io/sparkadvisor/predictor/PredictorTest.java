@@ -37,7 +37,7 @@ class PredictorTest {
     @Test
     void skewedStageIsSkewLimited() {
         var skew = stage(1, 10, 9000, 9000, 500, 14000, 18.0, 50.0, 53_000_000L);
-        var p = svc.predict(sql(0.8, List.of(skew)),
+        var p = svc.predict(sql(0.8, java.util.Arrays.asList(skew)),
                 conf("spark.executor.instances", "4", "spark.executor.cores", "2"));
         assertNotNull(p.shuffle());
         assertEquals(ShufflePartitionPrediction.Direction.SKEW_LIMITED, p.shuffle().direction());
@@ -47,7 +47,7 @@ class PredictorTest {
     @Test
     void underPartitionedNonSkewedRecommendsMorePartitions() {
         var under = stage(2, 4, 40000, 11000, 10000, 40000, 1.1, 1.0, 8_000_000_000L);
-        var p = svc.predict(sql(0.2, List.of(under)),
+        var p = svc.predict(sql(0.2, java.util.Arrays.asList(under)),
                 conf("spark.executor.instances", "4", "spark.executor.cores", "2"));
         var sp = p.shuffle();
         assertNotNull(sp);
@@ -58,7 +58,7 @@ class PredictorTest {
     @Test
     void executorScalingFlooredBySkewStraggler() {
         var skew = stage(1, 10, 9000, 9000, 500, 14000, 18.0, 50.0, 53_000_000L);
-        var p = svc.predict(sql(0.8, List.of(skew)),
+        var p = svc.predict(sql(0.8, java.util.Arrays.asList(skew)),
                 conf("spark.executor.instances", "4", "spark.executor.cores", "2"));
         ExecutorScalingPrediction ep = p.executor();
         assertNotNull(ep);
@@ -77,7 +77,7 @@ class PredictorTest {
     @Test
     void everyPredictionCarriesConfidenceAndAssumptions() {
         var st = stage(2, 8, 8000, 1100, 1000, 8000, 1.1, 1.0, 4_000_000_000L);
-        var p = svc.predict(sql(0.5, List.of(st)),
+        var p = svc.predict(sql(0.5, java.util.Arrays.asList(st)),
                 conf("spark.executor.instances", "4", "spark.executor.cores", "2"));
         assertNotNull(p.shuffle().confidence());
         assertTrue(!p.shuffle().assumptions().isEmpty());

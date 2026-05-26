@@ -45,8 +45,8 @@ public final class AnthropicLlmProvider implements LlmProvider {
 
     public AnthropicLlmProvider(String apiKey, String model, String baseUrl) {
         this.apiKey = apiKey;
-        this.model = (model == null || model.isBlank()) ? DEFAULT_MODEL : model;
-        this.baseUrl = (baseUrl == null || baseUrl.isBlank()) ? DEFAULT_BASE : baseUrl;
+        this.model = (model == null || model.trim().isEmpty()) ? DEFAULT_MODEL : model;
+        this.baseUrl = (baseUrl == null || baseUrl.trim().isEmpty()) ? DEFAULT_BASE : baseUrl;
         this.http = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(15))
                 .build();
@@ -59,7 +59,7 @@ public final class AnthropicLlmProvider implements LlmProvider {
 
     @Override
     public String complete(String systemPrompt, String userPrompt) throws Exception {
-        if (apiKey == null || apiKey.isBlank()) {
+        if (apiKey == null || apiKey.trim().isEmpty()) {
             throw new IllegalStateException("No Anthropic API key (set ANTHROPIC_API_KEY)");
         }
         String body = buildRequestBody(systemPrompt, userPrompt);

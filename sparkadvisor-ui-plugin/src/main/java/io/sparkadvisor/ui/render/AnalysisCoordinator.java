@@ -73,13 +73,13 @@ public final class AnalysisCoordinator {
     public List<String> availableStatementIds(String path) throws Exception {
         return modelFor(path).sqlExecutions().stream()
                 .map(SqlExecution::statementId)
-                .filter(s -> s != null && !s.isBlank())
+                .filter(s -> s != null && !s.trim().isEmpty())
                 .distinct()
-                .toList();
+                .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
     }
 
     private SqlExecution selectTarget(ApplicationModel model, String statementId) {
-        if (statementId != null && !statementId.isBlank()) {
+        if (statementId != null && !statementId.trim().isEmpty()) {
             List<SqlExecution> matches = new SqlLocator(model).locate(statementId);
             return matches.isEmpty() ? null : matches.get(0);
         }

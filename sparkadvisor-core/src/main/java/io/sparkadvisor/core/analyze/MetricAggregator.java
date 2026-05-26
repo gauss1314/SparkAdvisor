@@ -50,7 +50,7 @@ public final class MetricAggregator {
 
     public SqlAnalysis analyze(SqlExecution sql) {
         List<Stage> stages = stagesFor(sql);
-        List<StageAnalysis> stageAnalyses = stages.stream().map(StageAnalysis::from).toList();
+        List<StageAnalysis> stageAnalyses = stages.stream().map(StageAnalysis::from).collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
 
         long criticalPath = criticalPath(stages);
         long ideal = idealTime(stages);

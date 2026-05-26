@@ -32,7 +32,7 @@ public final class QueueLlmAdvisor {
         if (provider == null) {
             return new AnalysisResult.AiAdvice(name(),
                     "No LLM provider configured; set one to generate queue-level AI advice.",
-                    List.of());
+                    new java.util.ArrayList<>());
         }
         try {
             String system = promptBuilder.systemPrompt();
@@ -44,7 +44,7 @@ public final class QueueLlmAdvisor {
             return new AnalysisResult.AiAdvice(name(),
                     "Queue AI advice unavailable (" + e.getClass().getSimpleName()
                             + "). The deterministic queue findings and recommendations still apply.",
-                    List.of());
+                    new java.util.ArrayList<>());
         }
     }
 }

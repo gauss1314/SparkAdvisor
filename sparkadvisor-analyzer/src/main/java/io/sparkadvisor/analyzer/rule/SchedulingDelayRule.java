@@ -46,7 +46,7 @@ public final class SchedulingDelayRule implements Rule {
                     "Stage %d waited %.0f%% of its time before the first task launched, "
                             + "indicating resource/scheduling wait.", st.stageId(), ratio * 100);
 
-            List<Recommendation> recs = List.of(
+            List<Recommendation> recs = new java.util.ArrayList<Recommendation>(java.util.Arrays.asList(
                     Recommendation.conf(
                             "warm up executors (raise spark.dynamicAllocation.minExecutors) "
                                     + "or pre-allocate resources",

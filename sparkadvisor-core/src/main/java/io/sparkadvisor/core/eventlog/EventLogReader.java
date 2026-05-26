@@ -76,7 +76,9 @@ public final class EventLogReader implements AutoCloseable {
         if (fs.isDirectory(root)) {
             return openRolling();
         }
-        return List.of(openOne(fs.getFileStatus(root)));
+        java.util.List<EventLogParser.EventLogPart> one = new java.util.ArrayList<EventLogParser.EventLogPart>();
+        one.add(openOne(fs.getFileStatus(root)));
+        return one;
     }
 
     private List<EventLogParser.EventLogPart> openRolling() throws IOException {

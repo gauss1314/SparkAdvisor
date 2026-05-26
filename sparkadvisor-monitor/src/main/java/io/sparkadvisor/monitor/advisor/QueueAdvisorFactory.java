@@ -11,7 +11,7 @@ public final class QueueAdvisorFactory {
     private QueueAdvisorFactory() {}
 
     public static QueueLlmAdvisor forMode(String mode) {
-        if (mode == null || mode.isBlank() || "none".equalsIgnoreCase(mode.trim())) {
+        if (mode == null || mode.trim().isEmpty() || "none".equalsIgnoreCase(mode.trim())) {
             return null;
         }
         String normalized = mode.trim().toLowerCase();

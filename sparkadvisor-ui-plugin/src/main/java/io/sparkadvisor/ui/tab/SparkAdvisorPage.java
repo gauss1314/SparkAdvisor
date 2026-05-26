@@ -59,7 +59,7 @@ public final class SparkAdvisorPage extends WebUIPage {
             String css = coordinator.stylesheet();
             String form = searchForm(statementId);
             String report;
-            if (statementId == null || statementId.isBlank()) {
+            if (statementId == null || statementId.trim().isEmpty()) {
                 css = css + "\n" + queueCoordinator.stylesheet();
                 report = queueCoordinator.renderBody(
                         path, QueueAnalyzer.DEFAULT_TOP_N, QueueAnalyzer.DEFAULT_BUCKET_MS);
@@ -117,7 +117,7 @@ public final class SparkAdvisorPage extends WebUIPage {
     private static Seq<Node> nodeSeq(Node n) {
         // VERIFY@3.5.1: building a single-element scala Seq[Node] from Java.
         return (Seq<Node>) (Seq<?>) NodeSeq.fromSeq(
-                JavaConverters.asScalaBuffer(java.util.List.of(n)).toList());
+                JavaConverters.asScalaBuffer(new java.util.ArrayList<scala.xml.Node>(java.util.Arrays.asList(n))).toSeq());
     }
 
     private static String escapeAttr(String s) {

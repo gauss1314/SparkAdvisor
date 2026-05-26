@@ -20,9 +20,13 @@ public final class PredictionService {
     private final ShufflePartitionPredictor shufflePredictor = new ShufflePartitionPredictor();
     private final ExecutorScalingPredictor executorPredictor = new ExecutorScalingPredictor();
 
-    public record Predictions(
-            ShufflePartitionPrediction shuffle,   // nullable if no shuffle stage
-            ExecutorScalingPrediction executor) {}
+    public static final class Predictions {
+        private final ShufflePartitionPrediction shuffle;
+        private final ExecutorScalingPrediction executor;
+        public Predictions(ShufflePartitionPrediction shuffle, ExecutorScalingPrediction executor){this.shuffle=shuffle;this.executor=executor;}
+        public ShufflePartitionPrediction shuffle(){return shuffle;}
+        public ExecutorScalingPrediction executor(){return executor;}
+    }
 
     /**
      * @param sql   analyzed SQL
@@ -84,19 +88,17 @@ public final class PredictionService {
 
     private static long memBytes(Map<String, String> c, String k, long dflt) {
         String v = c.get(k);
-        if (v == null || v.isBlank()) return dflt;
+        if (v == null || v.trim().isEmpty()) return dflt;
         v = v.trim().toLowerCase();
         try {
             long mult = 1;
             char last = v.charAt(v.length() - 1);
             if (!Character.isDigit(last)) {
-                mult = switch (last) {
-                    case 'k' -> 1024L;
-                    case 'm' -> 1024L * 1024;
-                    case 'g' -> 1024L * 1024 * 1024;
-                    case 't' -> 1024L * 1024 * 1024 * 1024;
-                    default -> 1L;
-                };
+                if (last == 'k') mult = 1024L;
+                else if (last == 'm') mult = 1024L * 1024;
+                else if (last == 'g') mult = 1024L * 1024 * 1024;
+                else if (last == 't') mult = 1024L * 1024 * 1024 * 1024;
+                else mult = 1L;
                 v = v.substring(0, v.length() - 1);
             }
             return Long.parseLong(v.trim()) * mult;

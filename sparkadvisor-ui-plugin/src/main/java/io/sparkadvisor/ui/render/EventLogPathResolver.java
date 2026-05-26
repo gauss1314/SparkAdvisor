@@ -38,14 +38,14 @@ public final class EventLogPathResolver {
 
     /** Path including an attempt id, when present: {@code <logDir>/<appId>_<attemptId>}. */
     public String pathFor(String appId, String attemptId) {
-        if (attemptId == null || attemptId.isBlank()) {
+        if (attemptId == null || attemptId.trim().isEmpty()) {
             return pathFor(appId);
         }
         return pathFor(appId) + "_" + attemptId;
     }
 
     public boolean isConfigured() {
-        return !logDir.isBlank();
+        return !logDir.trim().isEmpty();
     }
 
     private static String stripTrailingSlash(String s) {

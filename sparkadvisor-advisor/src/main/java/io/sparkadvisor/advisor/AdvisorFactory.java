@@ -23,13 +23,13 @@ public final class AdvisorFactory {
         if (mode == null) {
             return new RuleBasedAdvisor();
         }
-        return switch (mode.trim().toLowerCase()) {
-            case "none" -> null;
-            case "llm", "minimax", "llm:minimax", "llm:minimax-m2.5",
-                    "anthropic", "claude", "llm:anthropic", "llm:claude" ->
-                    new LlmAdvisor(llmProviderForMode(mode));
-            default -> new RuleBasedAdvisor();
-        };
+        String m0 = mode.trim().toLowerCase();
+        if ("none".equals(m0)) return null;
+        if ("llm".equals(m0) || "minimax".equals(m0) || "llm:minimax".equals(m0) || "llm:minimax-m2.5".equals(m0)
+                || "anthropic".equals(m0) || "claude".equals(m0) || "llm:anthropic".equals(m0) || "llm:claude".equals(m0)) {
+            return new LlmAdvisor(llmProviderForMode(mode));
+        }
+        return new RuleBasedAdvisor();
     }
 
     /**
@@ -38,10 +38,9 @@ public final class AdvisorFactory {
      */
     public static LlmProvider llmProviderForMode(String mode) {
         String m = mode == null ? "llm" : mode.trim().toLowerCase();
-        return switch (m) {
-            case "anthropic", "claude", "llm:anthropic", "llm:claude" ->
-                    new AnthropicLlmProvider();
-            default -> new MinimaxLlmProvider();
-        };
+        if ("anthropic".equals(m) || "claude".equals(m) || "llm:anthropic".equals(m) || "llm:claude".equals(m)) {
+            return new AnthropicLlmProvider();
+        }
+        return new MinimaxLlmProvider();
     }
 }

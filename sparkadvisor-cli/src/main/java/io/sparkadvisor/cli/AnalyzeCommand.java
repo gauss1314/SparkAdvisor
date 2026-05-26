@@ -65,7 +65,7 @@ public final class AnalyzeCommand implements Callable<Integer> {
     @Override
     public Integer call() throws Exception {
         Configuration conf = new Configuration();
-        if (hadoopConfDir != null && !hadoopConfDir.isBlank()) {
+        if (hadoopConfDir != null && !hadoopConfDir.trim().isEmpty()) {
             conf.addResource(new org.apache.hadoop.fs.Path(hadoopConfDir + "/core-site.xml"));
             conf.addResource(new org.apache.hadoop.fs.Path(hadoopConfDir + "/hdfs-site.xml"));
         }
@@ -79,7 +79,7 @@ public final class AnalyzeCommand implements Callable<Integer> {
         }
 
         SqlExecution target = selectTarget(model);
-        if (target == null && (statementId != null && !statementId.isBlank())) {
+        if (target == null && (statementId != null && !statementId.trim().isEmpty())) {
             System.err.println("[error] No SQL execution matched StatementID/executionId: "
                     + statementId);
             return 2;
@@ -96,13 +96,13 @@ public final class AnalyzeCommand implements Callable<Integer> {
 
         String fmt = format == null ? "html" : format.toLowerCase();
         Path outPath = Path.of(out != null ? out : "report." + fmt);
-        switch (fmt) {
-            case "json" -> new JsonReportWriter().write(result, outPath);
-            case "html" -> new HtmlReportWriter().write(result, outPath);
-            default -> {
-                System.err.println("[error] Unknown --format: " + format + " (use html|json)");
-                return 2;
-            }
+        if ("json".equals(fmt)) {
+            new JsonReportWriter().write(result, outPath);
+        } else if ("html".equals(fmt)) {
+            new HtmlReportWriter().write(result, outPath);
+        } else {
+            System.err.println("[error] Unknown --format: " + format + " (use html|json)");
+            return 2;
         }
         System.out.println("Report written: " + outPath.toAbsolutePath());
         return 0;
@@ -110,7 +110,7 @@ public final class AnalyzeCommand implements Callable<Integer> {
 
     /** Resolve the single target SQL: by id if given, else the slowest one. */
     private SqlExecution selectTarget(ApplicationModel model) {
-        if (statementId != null && !statementId.isBlank()) {
+        if (statementId != null && !statementId.trim().isEmpty()) {
             List<SqlExecution> matches = new SqlLocator(model).locate(statementId);
             return matches.isEmpty() ? null : matches.get(0);
         }

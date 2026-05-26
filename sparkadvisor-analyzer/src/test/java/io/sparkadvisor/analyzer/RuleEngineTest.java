@@ -44,7 +44,7 @@ class RuleEngineTest {
     @Test
     void detectsCriticalSkew() {
         var skew = stage(1, 18.0, 0, 53_000_000L, 0, 0, 0, 9000, 9000, 500);
-        var fs = analyzer.analyze(sql(0.8, List.of(skew)), conf("spark.sql.adaptive.enabled", "false"));
+        var fs = analyzer.analyze(sql(0.8, java.util.Arrays.asList(skew)), conf("spark.sql.adaptive.enabled", "false"));
         var f = byRule(fs, "R1_DATA_SKEW");
         assertNotNull(f);
         assertEquals(Severity.CRITICAL, f.severity());
@@ -53,7 +53,7 @@ class RuleEngineTest {
     @Test
     void aqeOffSuggestsEnablingAqe() {
         var skew = stage(1, 18.0, 0, 53_000_000L, 0, 0, 0, 9000, 9000, 500);
-        var fs = analyzer.analyze(sql(0.8, List.of(skew)), conf("spark.sql.adaptive.enabled", "false"));
+        var fs = analyzer.analyze(sql(0.8, java.util.Arrays.asList(skew)), conf("spark.sql.adaptive.enabled", "false"));
         var f = byRule(fs, "R1_DATA_SKEW");
         assertTrue(f.recommendations().get(0).action().contains("adaptive.enabled=true"));
     }
@@ -61,7 +61,7 @@ class RuleEngineTest {
     @Test
     void aqeOnDoesNotSuggestEnablingAqeAndOffersSaltOrFactorTune() {
         var skew = stage(1, 18.0, 0, 53_000_000L, 0, 0, 0, 9000, 9000, 500);
-        var fs = analyzer.analyze(sql(0.8, List.of(skew)),
+        var fs = analyzer.analyze(sql(0.8, java.util.Arrays.asList(skew)),
                 conf("spark.sql.adaptive.enabled", "true", "spark.sql.adaptive.skewJoin.enabled", "true"));
         var f = byRule(fs, "R1_DATA_SKEW");
         assertTrue(f.recommendations().stream()
@@ -73,7 +73,7 @@ class RuleEngineTest {
     @Test
     void spillUnderAqeTargetsAdvisorySize() {
         var spill = stage(2, 1.1, 0, 1_000_000_000L, 800_000_000L, 0, 0, 8000, 1000, 900);
-        var fs = analyzer.analyze(sql(0.8, List.of(spill)),
+        var fs = analyzer.analyze(sql(0.8, java.util.Arrays.asList(spill)),
                 conf("spark.sql.adaptive.enabled", "true",
                         "spark.sql.adaptive.coalescePartitions.enabled", "true"));
         var f = byRule(fs, "R2_EXCESSIVE_SPILL");
@@ -84,13 +84,13 @@ class RuleEngineTest {
     @Test
     void detectsLowParallelismGcAndSchedulingDelay() {
         assertNotNull(byRule(
-                analyzer.analyze(sql(0.15, List.of(stage(3, 1.2, 0, 0, 0, 0, 0, 5000, 1200, 1000))), conf()),
+                analyzer.analyze(sql(0.15, java.util.Arrays.asList(stage(3, 1.2, 0, 0, 0, 0, 0, 5000, 1200, 1000))), conf()),
                 "R3_LOW_PARALLELISM"));
         assertNotNull(byRule(
-                analyzer.analyze(sql(0.8, List.of(stage(4, 1.07, 0, 0, 0, 0.22, 0, 3000, 700, 650))), conf()),
+                analyzer.analyze(sql(0.8, java.util.Arrays.asList(stage(4, 1.07, 0, 0, 0, 0.22, 0, 3000, 700, 650))), conf()),
                 "R6_GC_PRESSURE"));
         assertNotNull(byRule(
-                analyzer.analyze(sql(0.8, List.of(stage(5, 1.05, 0, 0, 0, 0, 5000, 10000, 2000, 1900))), conf()),
+                analyzer.analyze(sql(0.8, java.util.Arrays.asList(stage(5, 1.05, 0, 0, 0, 0, 5000, 10000, 2000, 1900))), conf()),
                 "R8_SCHEDULING_DELAY"));
     }
 
@@ -98,7 +98,7 @@ class RuleEngineTest {
     void sortsCriticalFirst() {
         var skew = stage(1, 18.0, 0, 53_000_000L, 0, 0, 0, 9000, 9000, 500);
         var gc = stage(9, 1.07, 0, 0, 0, 0.22, 0, 3000, 700, 650);
-        var fs = analyzer.analyze(sql(0.8, List.of(skew, gc)), conf("spark.sql.adaptive.enabled", "false"));
+        var fs = analyzer.analyze(sql(0.8, java.util.Arrays.asList(skew, gc)), conf("spark.sql.adaptive.enabled", "false"));
         assertFalse(fs.isEmpty());
         assertEquals(Severity.CRITICAL, fs.get(0).severity());
     }
@@ -106,7 +106,7 @@ class RuleEngineTest {
     @Test
     void cleanStageProducesNoFindings() {
         var clean = stage(7, 1.04, 1.1, 0, 0, 0.02, 0, 1000, 520, 500);
-        assertTrue(analyzer.analyze(sql(0.85, List.of(clean)), conf()).isEmpty());
+        assertTrue(analyzer.analyze(sql(0.85, java.util.Arrays.asList(clean)), conf()).isEmpty());
     }
 
     @Test
@@ -114,7 +114,7 @@ class RuleEngineTest {
         // 5000 tasks, median 50ms -> over-parallel
         var st = new StageAnalysis(3, 5000, 8000, 80, 50, 250000, 1.6, 0, 0, 0,
                 0, 0.0, 0, 0, 0);
-        var f = byRule(analyzer.analyze(sql(0.8, List.of(st)), conf()), "R4_OVER_PARALLELISM");
+        var f = byRule(analyzer.analyze(sql(0.8, java.util.Arrays.asList(st)), conf()), "R4_OVER_PARALLELISM");
         assertNotNull(f);
     }
 
@@ -123,7 +123,7 @@ class RuleEngineTest {
         // 3000 input tasks, ~100KB each -> small files
         var st = new StageAnalysis(4, 3000, 9000, 600, 500, 1500000, 1.2, 0, 0, 0,
                 0, 0.0, 0, 300_000_000L, 100_000L);
-        var f = byRule(analyzer.analyze(sql(0.8, List.of(st)), conf()), "R5_SMALL_FILES");
+        var f = byRule(analyzer.analyze(sql(0.8, java.util.Arrays.asList(st)), conf()), "R5_SMALL_FILES");
         assertNotNull(f);
     }
 
@@ -132,7 +132,7 @@ class RuleEngineTest {
         var st = stage(5, 1.1, 0, 1000, 0, 0.0, 0, 5000, 600, 500);
         var sqlWithPlan = new SqlAnalysis(42L, "stmt", "select 1",
                 "== Physical Plan ==\nSortMergeJoin [k]\n  Scan a\n  Scan b",
-                15000, 10000, 2000, 0.5, 0.8, List.of(st));
+                15000, 10000, 2000, 0.5, 0.8, java.util.Arrays.asList(st));
         var fs = analyzer.analyze(sqlWithPlan, conf());
         assertNotNull(byRule(fs, "R7_BROADCAST_JOIN"));
     }
@@ -142,7 +142,7 @@ class RuleEngineTest {
         var st = stage(5, 1.1, 0, 1000, 0, 0.0, 0, 5000, 600, 500);
         var sqlWithPlan = new SqlAnalysis(42L, "stmt", "select 1",
                 "== Physical Plan ==\nBroadcastHashJoin [k]\n  Scan a\n  Scan b",
-                15000, 10000, 2000, 0.5, 0.8, List.of(st));
+                15000, 10000, 2000, 0.5, 0.8, java.util.Arrays.asList(st));
         assertEquals(null, byRule(analyzer.analyze(sqlWithPlan, conf()), "R7_BROADCAST_JOIN"));
     }
 }

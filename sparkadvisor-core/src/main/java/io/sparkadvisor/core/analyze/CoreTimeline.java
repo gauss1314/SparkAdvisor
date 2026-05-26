@@ -19,10 +19,15 @@ import java.util.List;
 public final class CoreTimeline {
 
     /** A segment [startMs, endMs) during which {@code cores} cores were available. */
-    public record Segment(long startMs, long endMs, int cores) {
-        long durationMs() {
-            return Math.max(0, endMs - startMs);
-        }
+    public static final class Segment {
+        private final long startMs;
+        private final long endMs;
+        private final int cores;
+        public Segment(long startMs, long endMs, int cores){this.startMs=startMs;this.endMs=endMs;this.cores=cores;}
+        public long startMs(){return startMs;}
+        public long endMs(){return endMs;}
+        public int cores(){return cores;}
+        long durationMs(){ return Math.max(0, endMs - startMs);}
     }
 
     private final List<Segment> segments;
@@ -42,7 +47,7 @@ public final class CoreTimeline {
      */
     public static CoreTimeline from(List<ExecutorEvent> events, int fallbackCores) {
         if (events == null || events.isEmpty()) {
-            return new CoreTimeline(List.of(), fallbackCores);
+            return new CoreTimeline(new ArrayList<Segment>(), fallbackCores);
         }
         List<ExecutorEvent> sorted = new ArrayList<>(events);
         sorted.sort(Comparator.comparingLong(ExecutorEvent::timeMs));

@@ -46,8 +46,8 @@ public final class MinimaxLlmProvider implements LlmProvider {
 
     public MinimaxLlmProvider(String apiKey, String model, String baseUrl) {
         this.apiKey = apiKey;
-        this.model = (model == null || model.isBlank()) ? DEFAULT_MODEL : model;
-        this.baseUrl = (baseUrl == null || baseUrl.isBlank()) ? DEFAULT_BASE : baseUrl;
+        this.model = (model == null || model.trim().isEmpty()) ? DEFAULT_MODEL : model;
+        this.baseUrl = (baseUrl == null || baseUrl.trim().isEmpty()) ? DEFAULT_BASE : baseUrl;
         this.http = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(15))
                 .build();
@@ -60,7 +60,7 @@ public final class MinimaxLlmProvider implements LlmProvider {
 
     @Override
     public String complete(String systemPrompt, String userPrompt) throws Exception {
-        if (apiKey == null || apiKey.isBlank()) {
+        if (apiKey == null || apiKey.trim().isEmpty()) {
             throw new IllegalStateException("No MiniMax API key (set MINIMAX_API_KEY)");
         }
         String body = buildRequestBody(systemPrompt, userPrompt);
@@ -99,17 +99,17 @@ public final class MinimaxLlmProvider implements LlmProvider {
         JsonNode root = mapper.readTree(responseBody);
 
         JsonNode openAiContent = root.path("choices").path(0).path("message").path("content");
-        if (!openAiContent.isMissingNode() && !openAiContent.asText("").isBlank()) {
+        if (!openAiContent.isMissingNode() && !openAiContent.asText("").trim().isEmpty()) {
             return openAiContent.asText();
         }
 
         JsonNode legacyReply = root.path("reply");
-        if (!legacyReply.isMissingNode() && !legacyReply.asText("").isBlank()) {
+        if (!legacyReply.isMissingNode() && !legacyReply.asText("").trim().isEmpty()) {
             return legacyReply.asText();
         }
 
         JsonNode text = root.path("text");
-        if (!text.isMissingNode() && !text.asText("").isBlank()) {
+        if (!text.isMissingNode() && !text.asText("").trim().isEmpty()) {
             return text.asText();
         }
 
@@ -127,7 +127,7 @@ public final class MinimaxLlmProvider implements LlmProvider {
 
     private static String envOrDefault(String name, String fallback) {
         String value = System.getenv(name);
-        return value == null || value.isBlank() ? fallback : value;
+        return value == null || value.trim().isEmpty() ? fallback : value;
     }
 
     private static String truncate(String s) {

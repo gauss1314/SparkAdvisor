@@ -100,7 +100,7 @@ sparkadvisor/                       # 父 POM，统一依赖与版本，maven.co
 └── sparkadvisor-ui-plugin/         # Spark/History UI tab 集成
 ```
 
-> **JDK 基线**：Java 21。父 POM 设 `maven.compiler.release=21`。鼓励用 `record` 表达领域模型与不可变结果对象、`sealed interface` 表达事件/Finding 类型、`switch` 模式匹配做事件分发、虚拟线程并行解析多个 event log 文件。Spark 3.5 官方支持在 Java 17/21 上运行，留意 Spark 对 JVM 的 `--add-opens` 启动参数要求（见 §10/§13）。
+> **JDK 基线**：Java 21。父 POM 设 `maven.compiler.release=21`。鼓励用 `Record 类型` 表达领域模型与不可变结果对象、`sealed interface` 表达事件/Finding 类型、`switch` 模式匹配做事件分发、虚拟线程并行解析多个 event log 文件。Spark 3.5 官方支持在 Java 17/21 上运行，留意 Spark 对 JVM 的 `--add-opens` 启动参数要求（见 §10/§13）。
 
 | 模块 | 关键依赖 | 依赖范围 | 说明 |
 | --- | --- | --- | --- |
@@ -244,7 +244,7 @@ classDiagram
 
 **内存策略**：`Stage` 不保留每个 task 的原始记录，而是**在 `onTaskEnd` 时增量喂给一个分位数估计器**（如 t-digest 或固定桶直方图），最终得到 `Distribution`。这样即使百万级 task 也只占常数内存。原始 task 仅在 `--keep-raw` 调试模式下保留。
 
-**Java 21 实现建议**：上述只读结果对象（`Distribution`、`SqlExecution`、`Finding`、各类 `Prediction`、`AnalysisResult` 等）用 `record` 表达，天然不可变且自带 equals/hashCode，便于缓存与 JSON 序列化；`Finding`/事件类别等封闭集合用 `sealed interface` + record 实现，配合 `switch` 模式匹配做分发。注意 Jackson 对 record 的支持需 2.12+（Spark 3.5 自带版本已满足）。
+**Java 21 实现建议**：上述只读结果对象（`Distribution`、`SqlExecution`、`Finding`、各类 `Prediction`、`AnalysisResult` 等）用 `Record 类型` 表达，天然不可变且自带 equals/hashCode，便于缓存与 JSON 序列化；`Finding`/事件类别等封闭集合用 `sealed interface` + Record 类型 实现，配合 `switch` 模式匹配做分发。注意 Jackson 对 Record 类型的支持需 2.12+（Spark 3.5 自带版本已满足）。
 
 ---
 

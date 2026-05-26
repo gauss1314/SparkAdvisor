@@ -1,29 +1,11 @@
 package io.sparkadvisor.core.finding;
 
-/**
- * A concrete tuning action attached to a finding.
- *
- * @param type        SQL_REWRITE or SPARK_CONF
- * @param action      the suggested change, e.g. "set spark.sql.adaptive.skewJoin.enabled=true"
- * @param rationale   why this helps, in plain language
- * @param expectedImpact qualitative or quantitative expected effect (may be null)
- */
-public record Recommendation(
-        Type type,
-        String action,
-        String rationale,
-        String expectedImpact) {
+import java.util.Objects;
 
-    public enum Type {
-        SQL_REWRITE,
-        SPARK_CONF
-    }
-
-    public static Recommendation conf(String action, String rationale, String expectedImpact) {
-        return new Recommendation(Type.SPARK_CONF, action, rationale, expectedImpact);
-    }
-
-    public static Recommendation sql(String action, String rationale, String expectedImpact) {
-        return new Recommendation(Type.SQL_REWRITE, action, rationale, expectedImpact);
-    }
-}
+public final class Recommendation {
+    public enum Type { SQL_REWRITE, SPARK_CONF }
+    private final Type type; private final String action,rationale,expectedImpact;
+    public Recommendation(Type type,String action,String rationale,String expectedImpact){this.type=type;this.action=action;this.rationale=rationale;this.expectedImpact=expectedImpact;}
+    public Type type(){return type;} public String action(){return action;} public String rationale(){return rationale;} public String expectedImpact(){return expectedImpact;}
+    public static Recommendation conf(String action,String rationale,String expectedImpact){return new Recommendation(Type.SPARK_CONF,action,rationale,expectedImpact);} public static Recommendation sql(String action,String rationale,String expectedImpact){return new Recommendation(Type.SQL_REWRITE,action,rationale,expectedImpact);} 
+    @Override public boolean equals(Object o){if(this==o)return true; if(!(o instanceof Recommendation))return false; Recommendation that=(Recommendation)o; return type==that.type&&Objects.equals(action,that.action)&&Objects.equals(rationale,that.rationale)&&Objects.equals(expectedImpact,that.expectedImpact);} @Override public int hashCode(){return Objects.hash(type,action,rationale,expectedImpact);} }

@@ -47,7 +47,7 @@ public final class SmallFilesRule implements Rule {
                             + "a small-files pattern; file count, not data volume, drives the task count.",
                     st.stageId(), st.numTasks(), st.medianInputBytesPerTask());
 
-            List<Recommendation> recs = List.of(
+            List<Recommendation> recs = new java.util.ArrayList<Recommendation>(java.util.Arrays.asList(
                     Recommendation.sql(
                             "compact the source into larger files (e.g. periodic OPTIMIZE/compaction, "
                                     + "or repartition on write)",

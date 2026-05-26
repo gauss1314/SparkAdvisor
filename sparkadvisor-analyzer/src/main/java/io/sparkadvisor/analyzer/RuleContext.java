@@ -2,12 +2,8 @@ package io.sparkadvisor.analyzer;
 
 import io.sparkadvisor.core.analyze.SqlAnalysis;
 
-/**
- * Everything a rule needs to evaluate one SQL: the aggregated analysis, the thresholds,
- * and the AQE configuration context.
- */
-public record RuleContext(
-        SqlAnalysis sql,
-        RuleThresholds thresholds,
-        AqeContext aqe) {
+public final class RuleContext {
+    private final SqlAnalysis sql; private final RuleThresholds thresholds; private final AqeContext aqe;
+    public RuleContext(SqlAnalysis sql, RuleThresholds thresholds, AqeContext aqe){this.sql=sql;this.thresholds=thresholds;this.aqe=aqe;}
+    public SqlAnalysis sql(){return sql;} public RuleThresholds thresholds(){return thresholds;} public AqeContext aqe(){return aqe;}
 }

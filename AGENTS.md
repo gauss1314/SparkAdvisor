@@ -60,8 +60,8 @@ sparkadvisor-ui-plugin History Server tab（AppHistoryServerPlugin/ServiceLoader
 
 ## 6. 代码风格
 
-- 不可变结果对象用 `record`（`Distribution`、`SqlExecution`、`Finding`、各 `Prediction`、`AnalysisResult` 等）。
-- 封闭类型集合用 `sealed interface` + record（如 `Finding` 的种类、`Recommendation.type`），用 `switch` 模式匹配分发。
+- 不可变结果对象用 `Record 类型`（`Distribution`、`SqlExecution`、`Finding`、各 `Prediction`、`AnalysisResult` 等）。
+- 封闭类型集合用 `sealed interface` + Record 类型（如 `Finding` 的种类、`Recommendation.type`），用 `switch` 模式匹配分发。
 - 包名根 `io.sparkadvisor`。公共 API 写 Javadoc；阈值类常量集中到 `analyzer` 的配置类，**不散落魔法数**。
 - 解析层对“不完整/截断/缺失字段”必须容错：标注 `incomplete=true`，不抛异常中断整体分析。
 - 日志用 `java.util.logging` 或 slf4j（若已在 classpath），不 `System.out` 打调试信息。

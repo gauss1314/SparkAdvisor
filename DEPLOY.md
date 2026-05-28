@@ -177,6 +177,7 @@ bin/sparkadvisor analyze \
 | `--top` | 未指定 StatementID 时用于选择慢 SQL，当前报告输出最慢一条。 |
 | `--keep-raw` | 调试用，保留原始 task 记录，会增加内存占用。 |
 | `--hadoop-conf-dir` | 覆盖环境变量中的 Hadoop 配置目录。 |
+| `--auth-to-local` | 覆盖 Hadoop `hadoop.security.auth_to_local` 规则；也可用环境变量 `SPARKADVISOR_AUTH_TO_LOCAL`。 |
 | `--advise none|rule|llm` | Advisor 模式，默认 `rule`；`llm` 默认调用 MiniMax-M2.5，需要 `MINIMAX_API_KEY`。可用 `llm:claude` 走 Anthropic。 |
 
 LLM 模式只发送结构化 `AnalysisResult` JSON，不发送 raw event log：
@@ -229,6 +230,7 @@ bin/sparkadvisor queue-report \
 | `--top` | 深度分析的最慢 SQL 数量，默认 50；其它 SQL 仍进入吞吐、延迟和趋势聚合。 |
 | `--bucket` | 时间分桶粒度，例如 `15m`、`1h`、`3600s`，默认 `1h`。 |
 | `--hadoop-conf-dir` | 覆盖环境变量中的 Hadoop 配置目录。 |
+| `--auth-to-local` | 覆盖 Hadoop `hadoop.security.auth_to_local` 规则；也可用环境变量 `SPARKADVISOR_AUTH_TO_LOCAL`。 |
 | `--advise none|llm` | 队列级 AI Advisor，默认 `none`；`llm` 默认调用 MiniMax-M2.5，只发送结构化 `QueueAnalysisResult`。 |
 
 队列报告包含：
@@ -262,7 +264,7 @@ bin/sparkadvisor queue-report \
 
 **HDFS 权限或 Kerberos 失败**
 
-- CLI：确认脚本中的 `source /opt/client/bigdata_env` 与 `kinit` 可执行。
+- CLI：确认脚本中的 `source /opt/client/bigdata_env` 与 `kinit` 可执行；如报 `No rules applied to user@REALM`，确认 `core-site.xml` 中的 `hadoop.security.auth_to_local` 可把 Kerberos principal 映射为本地短用户名，或临时使用 `--auth-to-local 'RULE:[1:$1@$0](.*@HADOOP.COM)s/@.*// DEFAULT'`。
 - SHS：确认 History Server 本身能读取该 event log。
 
 **队列页面长时间显示分析中**

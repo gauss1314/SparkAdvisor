@@ -10,7 +10,6 @@ import io.sparkadvisor.report.json.JsonReportWriter;
 import io.sparkadvisor.report.model.AnalysisResult;
 import io.sparkadvisor.report.model.AnalysisResultBuilder;
 
-import org.apache.hadoop.conf.Configuration;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
@@ -58,6 +57,11 @@ public final class AnalyzeCommand implements Callable<Integer> {
             description = "Override HADOOP_CONF_DIR (otherwise inherited from the environment).")
     String hadoopConfDir;
 
+    @Option(names = "--auth-to-local",
+            description = "Override Hadoop hadoop.security.auth_to_local rules, e.g. "
+                    + "'RULE:[1:$1@$0](.*@HADOOP.COM)s/@.*// DEFAULT'.")
+    String authToLocal;
+
     @Option(names = "--advise", defaultValue = "rule",
             description = "Tuning advisor: none | rule | llm. Default: rule (offline). "
                     + "'llm' calls MiniMax-M2.5 (needs MINIMAX_API_KEY) and consumes the structured "
@@ -66,11 +70,8 @@ public final class AnalyzeCommand implements Callable<Integer> {
 
     @Override
     public Integer call() throws Exception {
-        Configuration conf = new Configuration();
-        if (!Strings.isBlank(hadoopConfDir)) {
-            conf.addResource(new org.apache.hadoop.fs.Path(hadoopConfDir + "/core-site.xml"));
-            conf.addResource(new org.apache.hadoop.fs.Path(hadoopConfDir + "/hdfs-site.xml"));
-        }
+        org.apache.hadoop.conf.Configuration conf =
+                HadoopCliConfiguration.load(hadoopConfDir, authToLocal);
 
         EventLogAnalyzer analyzer = new EventLogAnalyzer(conf);
         ApplicationModel model = analyzer.analyze(path);

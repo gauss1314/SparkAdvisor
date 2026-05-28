@@ -8,7 +8,6 @@ import io.sparkadvisor.monitor.render.QueueHtmlWriter;
 import io.sparkadvisor.monitor.render.QueueJsonWriter;
 import io.sparkadvisor.core.util.Strings;
 
-import org.apache.hadoop.conf.Configuration;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
@@ -50,17 +49,19 @@ public final class QueueReportCommand implements Callable<Integer> {
             description = "Override HADOOP_CONF_DIR (otherwise inherited from the environment).")
     String hadoopConfDir;
 
+    @Option(names = "--auth-to-local",
+            description = "Override Hadoop hadoop.security.auth_to_local rules, e.g. "
+                    + "'RULE:[1:$1@$0](.*@HADOOP.COM)s/@.*// DEFAULT'.")
+    String authToLocal;
+
     @Option(names = "--advise", defaultValue = "none",
             description = "Queue AI advisor mode: none | llm. Default: none. llm uses MiniMax-M2.5 unless overridden.")
     String advise;
 
     @Override
     public Integer call() throws Exception {
-        Configuration conf = new Configuration();
-        if (!Strings.isBlank(hadoopConfDir)) {
-            conf.addResource(new org.apache.hadoop.fs.Path(hadoopConfDir + "/core-site.xml"));
-            conf.addResource(new org.apache.hadoop.fs.Path(hadoopConfDir + "/hdfs-site.xml"));
-        }
+        org.apache.hadoop.conf.Configuration conf =
+                HadoopCliConfiguration.load(hadoopConfDir, authToLocal);
 
         QueueAnalysisResult result = new QueueAnalyzer(conf)
                 .analyze(path, top, parseDurationMs(bucket));

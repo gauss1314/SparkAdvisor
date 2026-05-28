@@ -31,6 +31,7 @@ fi
 # Prefer the env exported by bigdata_env; fall back to common locations.
 SPARK_HOME="${SPARK_HOME:-/opt/client/Spark2x/spark}"
 HADOOP_CONF_DIR="${HADOOP_CONF_DIR:-/opt/client/HDFS/hadoop/etc/hadoop}"
+export HADOOP_CONF_DIR
 CP="${JAR}:${HADOOP_CONF_DIR}:${SPARK_HOME}/jars/*"
 
 # --- 4) JVM flags ---------------------------------------------------------------

@@ -98,6 +98,7 @@ bin/sparkadvisor analyze \
 | `--top` | 未指定 StatementID 时，选择最慢的 N 条 SQL，当前 CLI 取其中最慢一条生成报告。 |
 | `--keep-raw` | 调试用，保留原始 task 记录，会显著增加内存占用。 |
 | `--hadoop-conf-dir` | 覆盖环境变量中的 Hadoop 配置目录。 |
+| `--auth-to-local` | 覆盖 Hadoop `hadoop.security.auth_to_local` 规则；也可用环境变量 `SPARKADVISOR_AUTH_TO_LOCAL`。 |
 | `--advise none\|rule\|llm` | Advisor 模式，默认 `rule`；`llm` 默认调用 MiniMax-M2.5，需要 `MINIMAX_API_KEY`。可用 `llm:claude` 走 Anthropic。 |
 
 LLM 模式示例：

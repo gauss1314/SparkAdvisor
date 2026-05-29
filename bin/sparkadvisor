@@ -32,7 +32,15 @@ fi
 SPARK_HOME="${SPARK_HOME:-/opt/client/Spark2x/spark}"
 HADOOP_CONF_DIR="${HADOOP_CONF_DIR:-/opt/client/HDFS/hadoop/etc/hadoop}"
 export HADOOP_CONF_DIR
-CP="${JAR}:${HADOOP_CONF_DIR}:${SPARK_HOME}/jars/*"
+HADOOP_CP=""
+if command -v hadoop >/dev/null 2>&1; then
+  HADOOP_CP="$(hadoop classpath --glob 2>/dev/null || hadoop classpath 2>/dev/null || true)"
+fi
+if [[ -n "${HADOOP_CP}" ]]; then
+  CP="${JAR}:${HADOOP_CONF_DIR}:${HADOOP_CP}:${SPARK_HOME}/jars/*"
+else
+  CP="${JAR}:${HADOOP_CONF_DIR}:${SPARK_HOME}/jars/*"
+fi
 
 # --- 4) JVM flags ---------------------------------------------------------------
 JAVA_BIN="${JAVA_HOME:+${JAVA_HOME}/bin/}java"
@@ -46,6 +54,21 @@ else
 fi
 
 JAVA_OPTS=(-Dfile.encoding=UTF-8)
+
+# Reuse Hadoop client JVM options exported by the cluster client environment.
+# These often carry required Kerberos/JAAS settings such as
+# -Djava.security.krb5.conf and -Djava.security.auth.login.config. Without
+# them, Java GSS/SASL may fail even when kinit and hdfs dfs work.
+append_java_opts() {
+  local opts="$1"
+  if [[ -n "${opts}" ]]; then
+    # shellcheck disable=SC2206
+    local parsed=( ${opts} )
+    JAVA_OPTS+=("${parsed[@]}")
+  fi
+}
+append_java_opts "${HADOOP_OPTS:-}"
+append_java_opts "${HADOOP_CLIENT_OPTS:-}"
 
 # Spark 3.5.1 on JDK 9+ may need module opens for replay/reflection. Java 8 does
 # not support --add-opens, so do not pass these flags there.

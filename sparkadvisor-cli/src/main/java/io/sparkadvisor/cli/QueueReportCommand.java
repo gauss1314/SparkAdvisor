@@ -7,6 +7,7 @@ import io.sparkadvisor.monitor.advisor.QueueLlmAdvisor;
 import io.sparkadvisor.monitor.render.QueueHtmlWriter;
 import io.sparkadvisor.monitor.render.QueueJsonWriter;
 import io.sparkadvisor.core.util.Strings;
+import io.sparkadvisor.report.i18n.ReportLanguage;
 
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
@@ -58,6 +59,11 @@ public final class QueueReportCommand implements Callable<Integer> {
             description = "Queue AI advisor mode: none | llm. Default: none. llm uses MiniMax-M2.5 unless overridden.")
     String advise;
 
+    @Option(names = "--lang", defaultValue = "auto",
+            description = "Report language: auto | zh | en. Default: auto. "
+                    + "In auto mode, an output filename containing '_zh' renders Chinese.")
+    String lang;
+
     @Override
     public Integer call() throws Exception {
         org.apache.hadoop.conf.Configuration conf =
@@ -65,16 +71,17 @@ public final class QueueReportCommand implements Callable<Integer> {
 
         QueueAnalysisResult result = new QueueAnalyzer(conf)
                 .analyze(path, top, parseDurationMs(bucket));
-        QueueLlmAdvisor advisor = QueueAdvisorFactory.forMode(advise);
+        String fmt = format == null ? "html" : format.toLowerCase();
+        Path outPath = Paths.get(out != null ? out : "queue-report." + fmt);
+        ReportLanguage reportLanguage = ReportLanguage.resolve(lang, outPath);
+        QueueLlmAdvisor advisor = QueueAdvisorFactory.forMode(advise, reportLanguage);
         if (advisor != null) {
             result = result.withAiAdvice(advisor.advise(result));
         }
-        String fmt = format == null ? "html" : format.toLowerCase();
-        Path outPath = Paths.get(out != null ? out : "queue-report." + fmt);
         if ("json".equals(fmt)) {
             new QueueJsonWriter().write(result, outPath);
         } else if ("html".equals(fmt)) {
-            new QueueHtmlWriter().write(result, outPath);
+            new QueueHtmlWriter().write(result, outPath, reportLanguage);
         } else {
             System.err.println("[error] Unknown --format: " + format + " (use html|json)");
             return 2;

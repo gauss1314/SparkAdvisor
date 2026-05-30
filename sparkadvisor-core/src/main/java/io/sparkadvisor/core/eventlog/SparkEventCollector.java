@@ -190,6 +190,11 @@ public final class SparkEventCollector extends SparkListener {
     @Override
     public void onTaskEnd(SparkListenerTaskEnd e) {
         StageBuilder b = stages.computeIfAbsent(e.stageId(), id -> new StageBuilder());
+        b.taskEndCount++;
+        String reason = e.reason() == null ? "" : e.reason().getClass().getName();
+        if (!reason.contains("Success")) {
+            b.failedTaskEndCount++;
+        }
         // Track earliest task launch for scheduling-delay computation.
         long launch = e.taskInfo().launchTime();
         if (b.firstTaskLaunch == 0L || launch < b.firstTaskLaunch) {
@@ -222,6 +227,8 @@ public final class SparkEventCollector extends SparkListener {
         b.output.add(m.outputMetrics().bytesWritten());
         b.shuffleRead.add(m.shuffleReadMetrics().totalBytesRead()); // VERIFY@3.5.1
         b.shuffleWrite.add(m.shuffleWriteMetrics().bytesWritten()); // VERIFY@3.5.1
+        b.shuffleFetchWaitMs += m.shuffleReadMetrics().fetchWaitTime(); // VERIFY@3.5.1
+        b.shuffleRemoteReadBytes += m.shuffleReadMetrics().remoteBytesRead(); // VERIFY@3.5.1
     }
 
     // ---- SQL + Thrift events (arrive via onOtherEvent) -------------------------
@@ -330,6 +337,10 @@ public final class SparkEventCollector extends SparkListener {
         long submissionTime = 0L;
         long firstTaskLaunch = 0L;
         long completionTime = 0L;
+        int taskEndCount;
+        int failedTaskEndCount;
+        long shuffleFetchWaitMs;
+        long shuffleRemoteReadBytes;
 
         final MetricDistributionBuilder duration = new MetricDistributionBuilder();
         final MetricDistributionBuilder shuffleRead = new MetricDistributionBuilder();
@@ -349,7 +360,9 @@ public final class SparkEventCollector extends SparkListener {
             return new Stage(
                     stageId, attemptId, numTasks, parentStageIds,
                     submissionTime, firstTaskLaunch, completionTime,
-                    shuffleRead.build().sum(), shuffleWrite.build().sum(), stats);
+                    shuffleRead.build().sum(), shuffleWrite.build().sum(),
+                    shuffleFetchWaitMs, shuffleRemoteReadBytes,
+                    failedTaskEndCount, Math.max(0, taskEndCount - numTasks), stats);
         }
     }
 }

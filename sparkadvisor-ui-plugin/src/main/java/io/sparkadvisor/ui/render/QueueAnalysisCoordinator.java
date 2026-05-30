@@ -4,6 +4,7 @@ import io.sparkadvisor.monitor.QueueAnalyzer;
 import io.sparkadvisor.monitor.aggregate.QueueAnalysisResult;
 import io.sparkadvisor.monitor.render.QueueHtmlWriter;
 import io.sparkadvisor.core.util.ValueObjects;
+import io.sparkadvisor.report.i18n.ReportLanguage;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
@@ -52,10 +53,14 @@ public final class QueueAnalysisCoordinator {
     }
 
     public String renderBody(String path, int topN, long bucketMs) throws Exception {
+        return renderBody(path, topN, bucketMs, ReportLanguage.EN);
+    }
+
+    public String renderBody(String path, int topN, long bucketMs, ReportLanguage language) throws Exception {
         Snapshot snapshot = snapshot(path);
         QueueAnalysisResult cached = cache.get(snapshot.key());
         if (cached != null) {
-            return htmlWriter.renderBody(cached);
+            return htmlWriter.renderBody(cached, language);
         }
 
         CompletableFuture<QueueAnalysisResult> future = inFlight.computeIfAbsent(snapshot.key(),
@@ -77,14 +82,17 @@ public final class QueueAnalysisCoordinator {
         if (future.isDone() && !future.isCompletedExceptionally()) {
             QueueAnalysisResult result = future.get();
             cache.put(snapshot.key(), result);
-            return htmlWriter.renderBody(result);
+            return htmlWriter.renderBody(result, language);
         }
         if (future.isCompletedExceptionally()) {
             inFlight.remove(snapshot.key());
-            return "<div class=\"banner warn\">Queue analysis failed or timed out after "
+            return language != null && language.isChinese()
+                    ? "<div class=\"banner warn\">队列分析失败或超过 "
+                    + ANALYSIS_TIMEOUT_MINUTES + " 分钟超时。刷新页面可重试。</div>"
+                    : "<div class=\"banner warn\">Queue analysis failed or timed out after "
                     + ANALYSIS_TIMEOUT_MINUTES + " minutes. Refresh to retry.</div>";
         }
-        return inProgressHtml(snapshot);
+        return inProgressHtml(snapshot, language);
     }
 
     private Snapshot snapshot(String pathStr) throws Exception {
@@ -120,7 +128,12 @@ public final class QueueAnalysisCoordinator {
         }
     }
 
-    private String inProgressHtml(Snapshot snapshot) {
+    private String inProgressHtml(Snapshot snapshot, ReportLanguage language) {
+        if (language != null && language.isChinese()) {
+            return "<div class=\"banner warn\">队列分析正在后台运行。快照大小："
+                    + bytes(snapshot.totalBytes())
+                    + "。稍后刷新该 tab 查看缓存后的队列报告。</div>";
+        }
         return "<div class=\"banner warn\">Queue analysis is running in the background. "
                 + "Snapshot size: " + bytes(snapshot.totalBytes())
                 + ". Refresh this tab later to view the cached queue report.</div>";

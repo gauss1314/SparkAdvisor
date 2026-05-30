@@ -3,6 +3,8 @@ package io.sparkadvisor.monitor.render;
 import io.sparkadvisor.core.finding.Recommendation;
 import io.sparkadvisor.core.util.Strings;
 import io.sparkadvisor.monitor.aggregate.QueueAnalysisResult;
+import io.sparkadvisor.report.i18n.ReportLanguage;
+import io.sparkadvisor.report.i18n.ReportText;
 import io.sparkadvisor.report.model.AnalysisResult;
 
 import java.io.IOException;
@@ -21,27 +23,41 @@ public final class QueueHtmlWriter {
     private final QueueJsonWriter jsonWriter = new QueueJsonWriter();
 
     public void write(QueueAnalysisResult result, Path out) throws IOException {
-        Files.write(out, render(result, isChineseOutput(out)).getBytes(StandardCharsets.UTF_8));
+        write(result, out, ReportLanguage.fromOutputPath(out));
+    }
+
+    public void write(QueueAnalysisResult result, Path out, ReportLanguage language) throws IOException {
+        Files.write(out, render(result, language).getBytes(StandardCharsets.UTF_8));
     }
 
     public String render(QueueAnalysisResult r) throws IOException {
-        return render(r, false);
+        return render(r, ReportLanguage.EN);
     }
 
     public String render(QueueAnalysisResult r, boolean zh) throws IOException {
+        return render(r, zh ? ReportLanguage.ZH : ReportLanguage.EN);
+    }
+
+    public String render(QueueAnalysisResult r, ReportLanguage language) throws IOException {
+        boolean zh = language != null && language.isChinese();
         return "<!DOCTYPE html>\n<html lang=\"" + (zh ? "zh-CN" : "en")
                 + "\"><head><meta charset=\"utf-8\">"
                 + "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">"
                 + "<title>" + t(zh, "SparkAdvisor Queue Report", "SparkAdvisor 队列报告")
                 + "</title><style>" + stylesheet() + "</style>"
-                + "</head><body>" + renderBody(r, zh) + "</body></html>";
+                + "</head><body>" + renderBody(r, language) + "</body></html>";
     }
 
     public String renderBody(QueueAnalysisResult r) throws IOException {
-        return renderBody(r, false);
+        return renderBody(r, ReportLanguage.EN);
     }
 
     public String renderBody(QueueAnalysisResult r, boolean zh) throws IOException {
+        return renderBody(r, zh ? ReportLanguage.ZH : ReportLanguage.EN);
+    }
+
+    public String renderBody(QueueAnalysisResult r, ReportLanguage language) throws IOException {
+        boolean zh = language != null && language.isChinese();
         StringBuilder h = new StringBuilder(16_384);
         h.append("<header><h1>")
                 .append(t(zh, "SparkAdvisor Queue", "SparkAdvisor 队列"))
@@ -71,8 +87,8 @@ public final class QueueHtmlWriter {
         bottlenecks(h, r, zh);
         contention(h, r, zh);
         slowQueries(h, r, zh);
-        recommendations(h, r, zh);
-        aiAdvice(h, r, zh);
+        recommendations(h, r, language);
+        aiAdvice(h, r, language);
         embeddedJson(h, r, zh);
         return h.toString();
     }
@@ -263,7 +279,8 @@ public final class QueueHtmlWriter {
         h.append("</tbody></table>");
     }
 
-    private void recommendations(StringBuilder h, QueueAnalysisResult r, boolean zh) {
+    private void recommendations(StringBuilder h, QueueAnalysisResult r, ReportLanguage language) {
+        boolean zh = language != null && language.isChinese();
         h.append("<section><h2>").append(t(zh, "Global recommendations", "全局调参建议"))
                 .append("</h2>");
         if (r.globalRecommendations().isEmpty()) {
@@ -274,19 +291,22 @@ public final class QueueHtmlWriter {
             return;
         }
         for (QueueAnalysisResult.QueueRecommendation rec : r.globalRecommendations()) {
+            Recommendation shown = ReportText.localize(rec.recommendation(), language);
             h.append("<div class=\"rec\"><b>").append(esc(rec.queueRuleId())).append("</b> &middot; ")
-                    .append(rec.confidence()).append("<br><code>")
-                    .append(esc(rec.recommendation().action())).append("</code>")
-                    .append("<p>").append(esc(rec.recommendation().rationale())).append("</p>")
+                    .append(esc(ReportText.confidence(rec.confidence(), language))).append("<br><code>")
+                    .append(esc(shown.action())).append("</code>")
+                    .append("<p>").append(esc(shown.rationale())).append("</p>")
                     .append("<p class=\"muted\">").append(t(zh, "Evidence", "证据"))
-                    .append(": ").append(esc(rec.evidence()))
+                    .append(": ").append(esc(ReportText.localizeText(rec.evidence(), language)))
                     .append("<br>").append(t(zh, "Coverage", "预期覆盖"))
-                    .append(": ").append(esc(rec.expectedCoverage())).append("</p></div>");
+                    .append(": ").append(esc(ReportText.localizeText(rec.expectedCoverage(), language)))
+                    .append("</p></div>");
         }
         h.append("</section>");
     }
 
-    private void aiAdvice(StringBuilder h, QueueAnalysisResult r, boolean zh) {
+    private void aiAdvice(StringBuilder h, QueueAnalysisResult r, ReportLanguage language) {
+        boolean zh = language != null && language.isChinese();
         h.append("<section><h2>").append(t(zh, "AI queue advice", "AI 队列建议")).append("</h2>");
         AnalysisResult.AiAdvice advice = r.aiAdvice();
         if (advice == null) {
@@ -304,13 +324,16 @@ public final class QueueHtmlWriter {
         }
         if (advice.recommendations() != null) {
             for (Recommendation rec : advice.recommendations()) {
-                h.append("<div class=\"rec\"><b>").append(rec.type()).append(":</b> ")
-                        .append(esc(rec.action()));
-                if (!Strings.isBlank(rec.rationale())) {
-                    h.append("<p>").append(esc(rec.rationale())).append("</p>");
+                Recommendation shown = ReportText.localize(rec, language);
+                h.append("<div class=\"rec\"><b>")
+                        .append(esc(ReportText.recommendationType(shown.type(), language)))
+                        .append(":</b> ")
+                        .append(esc(shown.action()));
+                if (!Strings.isBlank(shown.rationale())) {
+                    h.append("<p>").append(esc(shown.rationale())).append("</p>");
                 }
-                if (!Strings.isBlank(rec.expectedImpact())) {
-                    h.append("<p class=\"muted\">").append(esc(rec.expectedImpact())).append("</p>");
+                if (!Strings.isBlank(shown.expectedImpact())) {
+                    h.append("<p class=\"muted\">").append(esc(shown.expectedImpact())).append("</p>");
                 }
                 h.append("</div>");
             }
@@ -466,13 +489,6 @@ public final class QueueHtmlWriter {
 
     private static String t(boolean zh, String en, String zhText) {
         return zh ? zhText : en;
-    }
-
-    private static boolean isChineseOutput(Path out) {
-        if (out == null || out.getFileName() == null) {
-            return false;
-        }
-        return out.getFileName().toString().contains("_zh");
     }
 
     private static String duration(long ms) {

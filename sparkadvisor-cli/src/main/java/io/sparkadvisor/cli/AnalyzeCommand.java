@@ -6,6 +6,7 @@ import io.sparkadvisor.core.model.ApplicationModel;
 import io.sparkadvisor.core.model.SqlExecution;
 import io.sparkadvisor.core.util.Strings;
 import io.sparkadvisor.report.html.HtmlReportWriter;
+import io.sparkadvisor.report.i18n.ReportLanguage;
 import io.sparkadvisor.report.json.JsonReportWriter;
 import io.sparkadvisor.report.model.AnalysisResult;
 import io.sparkadvisor.report.model.AnalysisResultBuilder;
@@ -68,6 +69,11 @@ public final class AnalyzeCommand implements Callable<Integer> {
                     + "analysis, never the raw log.")
     String advise;
 
+    @Option(names = "--lang", defaultValue = "auto",
+            description = "Report language: auto | zh | en. Default: auto. "
+                    + "In auto mode, an output filename containing '_zh' keeps the legacy Chinese report behavior.")
+    String lang;
+
     @Override
     public Integer call() throws Exception {
         org.apache.hadoop.conf.Configuration conf =
@@ -88,21 +94,23 @@ public final class AnalyzeCommand implements Callable<Integer> {
             return 2;
         }
 
+        String fmt = format == null ? "html" : format.toLowerCase();
+        Path outPath = Paths.get(out != null ? out : "report." + fmt);
+        ReportLanguage reportLanguage = ReportLanguage.resolve(lang, outPath);
+
         AnalysisResult result = new AnalysisResultBuilder(model, path).build(target);
 
         // Apply the selected advisor (consumes the structured result, never the raw log).
         io.sparkadvisor.advisor.api.TuningAdvisor advisor =
-                io.sparkadvisor.advisor.AdvisorFactory.forMode(advise);
+                io.sparkadvisor.advisor.AdvisorFactory.forMode(advise, reportLanguage);
         if (advisor != null && result.targetSql() != null) {
             result = result.withAiAdvice(advisor.advise(result));
         }
 
-        String fmt = format == null ? "html" : format.toLowerCase();
-        Path outPath = Paths.get(out != null ? out : "report." + fmt);
         if ("json".equals(fmt)) {
             new JsonReportWriter().write(result, outPath);
         } else if ("html".equals(fmt)) {
-            new HtmlReportWriter().write(result, outPath);
+            new HtmlReportWriter().write(result, outPath, reportLanguage);
         } else {
             System.err.println("[error] Unknown --format: " + format + " (use html|json)");
             return 2;

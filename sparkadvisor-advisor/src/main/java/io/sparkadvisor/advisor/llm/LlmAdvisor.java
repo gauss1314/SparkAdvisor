@@ -1,6 +1,7 @@
 package io.sparkadvisor.advisor.llm;
 
 import io.sparkadvisor.advisor.api.TuningAdvisor;
+import io.sparkadvisor.report.i18n.ReportLanguage;
 import io.sparkadvisor.report.model.AnalysisResult;
 
 import java.util.List;
@@ -23,11 +24,18 @@ public final class LlmAdvisor implements TuningAdvisor {
     private static final Logger LOG = Logger.getLogger(LlmAdvisor.class.getName());
 
     private final LlmProvider provider;
-    private final PromptBuilder promptBuilder = new PromptBuilder();
+    private final ReportLanguage language;
+    private final PromptBuilder promptBuilder;
     private final AdviceResponseParser parser = new AdviceResponseParser();
 
     public LlmAdvisor(LlmProvider provider) {
+        this(provider, ReportLanguage.EN);
+    }
+
+    public LlmAdvisor(LlmProvider provider, ReportLanguage language) {
         this.provider = provider;
+        this.language = language == null ? ReportLanguage.EN : language;
+        this.promptBuilder = new PromptBuilder(this.language);
     }
 
     @Override
@@ -39,7 +47,10 @@ public final class LlmAdvisor implements TuningAdvisor {
     public AnalysisResult.AiAdvice advise(AnalysisResult result) {
         if (provider == null) {
             return new AnalysisResult.AiAdvice(name(),
-                    "No LLM provider configured; set one to generate AI advice.", new java.util.ArrayList<io.sparkadvisor.core.finding.Recommendation>());
+                    language.isChinese()
+                            ? "未配置 LLM provider；配置后才能生成 AI 调优建议。"
+                            : "No LLM provider configured; set one to generate AI advice.",
+                    new java.util.ArrayList<io.sparkadvisor.core.finding.Recommendation>());
         }
         try {
             String system = promptBuilder.systemPrompt();
@@ -49,7 +60,10 @@ public final class LlmAdvisor implements TuningAdvisor {
         } catch (Exception e) {
             LOG.warning("LLM advice failed: " + e);
             return new AnalysisResult.AiAdvice(name(),
-                    "AI advice unavailable (" + e.getClass().getSimpleName()
+                    language.isChinese()
+                            ? "AI 调优建议不可用（" + e.getClass().getSimpleName()
+                            + "）。上方的规则发现和预测仍然有效。"
+                            : "AI advice unavailable (" + e.getClass().getSimpleName()
                             + "). The rule-based findings and predictions above still apply.",
                     new java.util.ArrayList<io.sparkadvisor.core.finding.Recommendation>());
         }

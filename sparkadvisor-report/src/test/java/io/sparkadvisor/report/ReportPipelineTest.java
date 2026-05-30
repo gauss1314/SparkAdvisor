@@ -83,6 +83,8 @@ class ReportPipelineTest {
         assertTrue(html.contains("lang=\"zh-CN\""));
         assertTrue(html.contains("应用概览"));
         assertTrue(html.contains("关键路径与优化空间"));
+        assertTrue(html.contains("诊断摘要"));
+        assertTrue(html.contains("存在数据倾斜"));
     }
 
     @Test

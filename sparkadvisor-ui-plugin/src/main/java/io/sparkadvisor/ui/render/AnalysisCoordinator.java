@@ -1,11 +1,14 @@
 package io.sparkadvisor.ui.render;
 
+import io.sparkadvisor.advisor.AdvisorFactory;
+import io.sparkadvisor.advisor.api.TuningAdvisor;
 import io.sparkadvisor.core.EventLogAnalyzer;
 import io.sparkadvisor.core.locate.SqlLocator;
 import io.sparkadvisor.core.model.ApplicationModel;
 import io.sparkadvisor.core.model.SqlExecution;
 import io.sparkadvisor.core.util.Strings;
 import io.sparkadvisor.report.html.HtmlReportWriter;
+import io.sparkadvisor.report.i18n.ReportLanguage;
 import io.sparkadvisor.report.model.AnalysisResult;
 import io.sparkadvisor.report.model.AnalysisResultBuilder;
 
@@ -64,10 +67,18 @@ public final class AnalysisCoordinator {
      * @param statementId StatementID or numeric executionId; if null, the slowest SQL is used
      */
     public String renderBody(String path, String statementId) throws Exception {
+        return renderBody(path, statementId, ReportLanguage.EN);
+    }
+
+    public String renderBody(String path, String statementId, ReportLanguage language) throws Exception {
         ApplicationModel model = modelFor(path);
         SqlExecution target = selectTarget(model, statementId);
         AnalysisResult result = new AnalysisResultBuilder(model, path).build(target);
-        return htmlWriter.renderBody(result);
+        if (result.targetSql() != null) {
+            TuningAdvisor advisor = AdvisorFactory.forMode("rule", language);
+            result = result.withAiAdvice(advisor.advise(result));
+        }
+        return htmlWriter.renderBody(result, language);
     }
 
     /** List the StatementIDs available in this app, for hints in the UI. */

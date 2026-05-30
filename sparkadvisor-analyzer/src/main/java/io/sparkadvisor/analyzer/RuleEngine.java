@@ -8,7 +8,10 @@ import io.sparkadvisor.analyzer.rule.LowParallelismRule;
 import io.sparkadvisor.analyzer.rule.OverParallelismRule;
 import io.sparkadvisor.analyzer.rule.Rule;
 import io.sparkadvisor.analyzer.rule.SchedulingDelayRule;
+import io.sparkadvisor.analyzer.rule.ShuffleFetchWaitRule;
 import io.sparkadvisor.analyzer.rule.SmallFilesRule;
+import io.sparkadvisor.analyzer.rule.SortAggregateSpillRule;
+import io.sparkadvisor.analyzer.rule.TaskRetryRule;
 import io.sparkadvisor.core.finding.Finding;
 import io.sparkadvisor.core.util.Java8Collections;
 
@@ -45,6 +48,9 @@ public final class RuleEngine {
         list.add(new GcPressureRule());
         list.add(new SchedulingDelayRule());
         list.add(new BroadcastJoinRule());
+        list.add(new ShuffleFetchWaitRule());
+        list.add(new TaskRetryRule());
+        list.add(new SortAggregateSpillRule());
         return Java8Collections.listCopy(list);
     }
 

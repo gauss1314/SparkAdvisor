@@ -2,6 +2,7 @@ package io.sparkadvisor.monitor.advisor;
 
 import io.sparkadvisor.advisor.AdvisorFactory;
 import io.sparkadvisor.core.util.Strings;
+import io.sparkadvisor.report.i18n.ReportLanguage;
 
 /**
  * Queue-level advisor wiring. Queue reports always include deterministic queue rules; this
@@ -12,6 +13,10 @@ public final class QueueAdvisorFactory {
     private QueueAdvisorFactory() {}
 
     public static QueueLlmAdvisor forMode(String mode) {
+        return forMode(mode, ReportLanguage.EN);
+    }
+
+    public static QueueLlmAdvisor forMode(String mode, ReportLanguage language) {
         if (Strings.isBlank(mode) || "none".equalsIgnoreCase(mode.trim())) {
             return null;
         }
@@ -24,7 +29,7 @@ public final class QueueAdvisorFactory {
                 || normalized.equals("claude")
                 || normalized.equals("llm:anthropic")
                 || normalized.equals("llm:claude")) {
-            return new QueueLlmAdvisor(AdvisorFactory.llmProviderForMode(normalized));
+            return new QueueLlmAdvisor(AdvisorFactory.llmProviderForMode(normalized), language);
         }
         return null;
     }

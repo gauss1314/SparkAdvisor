@@ -7,6 +7,8 @@ import io.sparkadvisor.core.finding.Recommendation;
 import io.sparkadvisor.core.predict.ExecutorScalingPrediction;
 import io.sparkadvisor.core.predict.ShufflePartitionPrediction;
 import io.sparkadvisor.core.util.Strings;
+import io.sparkadvisor.report.i18n.ReportLanguage;
+import io.sparkadvisor.report.i18n.ReportText;
 import io.sparkadvisor.report.json.JsonReportWriter;
 import io.sparkadvisor.report.model.AnalysisResult;
 
@@ -39,14 +41,23 @@ public final class HtmlReportWriter {
     private final JsonReportWriter jsonWriter = new JsonReportWriter();
 
     public void write(AnalysisResult result, Path out) throws IOException {
-        Files.write(out, render(result, isChineseOutput(out)).getBytes(StandardCharsets.UTF_8));
+        write(result, out, ReportLanguage.fromOutputPath(out));
+    }
+
+    public void write(AnalysisResult result, Path out, ReportLanguage language) throws IOException {
+        Files.write(out, render(result, language).getBytes(StandardCharsets.UTF_8));
     }
 
     public String render(AnalysisResult r) throws IOException {
-        return render(r, false);
+        return render(r, ReportLanguage.EN);
     }
 
     public String render(AnalysisResult r, boolean zh) throws IOException {
+        return render(r, zh ? ReportLanguage.ZH : ReportLanguage.EN);
+    }
+
+    public String render(AnalysisResult r, ReportLanguage language) throws IOException {
+        boolean zh = language != null && language.isChinese();
         StringBuilder h = new StringBuilder(8192);
         h.append("<!DOCTYPE html>\n<html lang=\"").append(zh ? "zh-CN" : "en")
                 .append("\"><head><meta charset=\"utf-8\">");
@@ -54,7 +65,7 @@ public final class HtmlReportWriter {
         h.append("<title>").append(t(zh, "SparkAdvisor Report", "SparkAdvisor 报告"))
                 .append("</title>");
         h.append("<style>").append(css()).append("</style></head><body>");
-        h.append(renderBody(r, zh));
+        h.append(renderBody(r, language));
         h.append("</body></html>");
         return h.toString();
     }
@@ -65,10 +76,15 @@ public final class HtmlReportWriter {
      * inner HTML. The standalone {@link #render} wraps this in a full document.
      */
     public String renderBody(AnalysisResult r) throws IOException {
-        return renderBody(r, false);
+        return renderBody(r, ReportLanguage.EN);
     }
 
     public String renderBody(AnalysisResult r, boolean zh) throws IOException {
+        return renderBody(r, zh ? ReportLanguage.ZH : ReportLanguage.EN);
+    }
+
+    public String renderBody(AnalysisResult r, ReportLanguage language) throws IOException {
+        boolean zh = language != null && language.isChinese();
         StringBuilder h = new StringBuilder(8192);
         h.append("<header><h1>SparkAdvisor</h1>");
         h.append("<div class=\"sub\">").append(esc(r.meta().generatedAt()))
@@ -85,17 +101,20 @@ public final class HtmlReportWriter {
         appOverview(h, r, zh);
         if (r.targetSql() != null) {
             sqlOverview(h, r.targetSql(), zh);
-            criticalPath(h, r.targetSql(), zh);
-            hardMetrics(h, r.targetSql(), zh);
-            stageTable(h, r.targetSql(), zh);
+            diagnosisSummary(h, r, language);
         } else {
             h.append("<section><p class=\"muted\">")
                     .append(t(zh, "No target SQL selected.", "未选择目标 SQL。"))
                     .append("</p></section>");
         }
-        findings(h, r.findings(), zh);
-        predictions(h, r, zh);
-        aiPlaceholder(h, r, zh);
+        aiPlaceholder(h, r, language);
+        findings(h, r.findings(), language);
+        predictions(h, r, language);
+        if (r.targetSql() != null) {
+            criticalPath(h, r.targetSql(), zh);
+            hardMetrics(h, r.targetSql(), zh);
+            stageTable(h, r.targetSql(), zh);
+        }
         embeddedJson(h, r, zh);
         return h.toString();
     }
@@ -205,6 +224,8 @@ public final class HtmlReportWriter {
         th(h, "Shuffle R/W");
         th(h, "Spill");
         th(h, "GC");
+        th(h, t(zh, "Fetch wait", "Fetch 等待"));
+        th(h, t(zh, "Retries", "重试"));
         th(h, t(zh, "Sched delay", "调度延迟"));
         h.append("</tr></thead><tbody>");
         for (StageAnalysis st : s.stagesByDurationDesc()) {
@@ -219,13 +240,52 @@ public final class HtmlReportWriter {
             td(h, bytes(st.shuffleReadBytes()) + " / " + bytes(st.shuffleWriteBytes()));
             td(h, bytes(st.spillBytes()));
             td(h, pct(st.gcRatio()));
+            td(h, duration(st.shuffleFetchWaitMs()));
+            td(h, st.failedTaskAttempts() + " / " + st.extraTaskAttempts());
             td(h, duration(st.schedulingDelayMs()));
             h.append("</tr>");
         }
         h.append("</tbody></table></section>");
     }
 
-    private void findings(StringBuilder h, List<Finding> findings, boolean zh) {
+    private void diagnosisSummary(StringBuilder h, AnalysisResult r, ReportLanguage language) {
+        boolean zh = language != null && language.isChinese();
+        SqlAnalysis sql = r.targetSql();
+        h.append("<section><h2>").append(t(zh, "Diagnosis summary", "诊断摘要"))
+                .append("</h2><div class=\"cards\">");
+
+        Finding top = topFinding(r.findings());
+        card(h, t(zh, "Primary bottleneck", "首要瓶颈"),
+                diagValue(top == null
+                        ? t(zh, "No rule findings", "未命中规则")
+                        : ReportText.severity(top.severity(), language) + " · "
+                        + esc(shortText(ReportText.findingExplanation(top, language), 92))),
+                top != null && top.severity().ordinal() >= 1);
+        card(h, t(zh, "Removable headroom", "可优化空间"),
+                diagValue(pct(Math.max(0.0, sql.deviation())) + " · "
+                        + duration(sql.wallClockMs()) + " → " + duration(sql.criticalPathMs())),
+                sql.deviation() > 0.20);
+        card(h, t(zh, "Executor ROI", "Executor 收益"),
+                diagValue(executorVerdict(r.executorPrediction(), zh)),
+                r.executorPrediction() != null
+                        && r.executorPrediction().kneeCores() <= r.executorPrediction().currentCores());
+        card(h, t(zh, "Partition action", "分区动作"),
+                diagValue(shuffleVerdict(r.shufflePrediction(), zh)),
+                r.shufflePrediction() != null
+                        && r.shufflePrediction().direction() == ShufflePartitionPrediction.Direction.SKEW_LIMITED);
+        h.append("</div>");
+
+        String plan = planShape(sql.physicalPlanText(), zh);
+        if (!Strings.isBlank(plan)) {
+            h.append("<p class=\"muted\">")
+                    .append(t(zh, "Plan signals", "计划信号"))
+                    .append(": ").append(esc(plan)).append("</p>");
+        }
+        h.append("</section>");
+    }
+
+    private void findings(StringBuilder h, List<Finding> findings, ReportLanguage language) {
+        boolean zh = language != null && language.isChinese();
         h.append("<section><h2>").append(t(zh, "Findings", "规则发现")).append("</h2>");
         if (findings == null || findings.isEmpty()) {
             h.append("<p class=\"muted\">")
@@ -237,7 +297,8 @@ public final class HtmlReportWriter {
             String sev = f.severity().name().toLowerCase();
             h.append("<div class=\"finding ").append(sev).append("\">");
             h.append("<div class=\"finding-head\"><span class=\"sev ").append(sev).append("\">")
-                    .append(f.severity()).append("</span> ").append(esc(f.explanation()));
+                    .append(esc(ReportText.severity(f.severity(), language))).append("</span> ")
+                    .append(esc(ReportText.findingExplanation(f, language)));
             if (f.targetStageId() != null) {
                 h.append(" <span class=\"muted\">(").append(t(zh, "stage ", "Stage "))
                         .append(f.targetStageId()).append(")</span>");
@@ -245,9 +306,12 @@ public final class HtmlReportWriter {
             h.append("</div>");
             if (f.recommendations() != null) {
                 for (Recommendation rec : f.recommendations()) {
-                    h.append("<div class=\"rec\"><b>").append(rec.type()).append(":</b> ")
-                            .append(esc(rec.action())).append(" — <span class=\"muted\">")
-                            .append(esc(rec.rationale())).append("</span></div>");
+                    Recommendation shown = ReportText.localize(rec, language);
+                    h.append("<div class=\"rec\"><b>")
+                            .append(esc(ReportText.recommendationType(shown.type(), language)))
+                            .append(":</b> ")
+                            .append(esc(shown.action())).append(" — <span class=\"muted\">")
+                            .append(esc(shown.rationale())).append("</span></div>");
                 }
             }
             h.append("</div>");
@@ -255,7 +319,8 @@ public final class HtmlReportWriter {
         h.append("</section>");
     }
 
-    private void predictions(StringBuilder h, AnalysisResult r, boolean zh) {
+    private void predictions(StringBuilder h, AnalysisResult r, ReportLanguage language) {
+        boolean zh = language != null && language.isChinese();
         ShufflePartitionPrediction sp = r.shufflePrediction();
         ExecutorScalingPrediction ep = r.executorPrediction();
         if (sp == null && ep == null) {
@@ -299,11 +364,11 @@ public final class HtmlReportWriter {
             }
             h.append("</p>");
             h.append("<p class=\"muted\">").append(t(zh, "Knob", "调参项"))
-                    .append(": <code>").append(esc(sp.tunedKnob()))
+                    .append(": <code>").append(esc(ReportText.localizeText(sp.tunedKnob(), language)))
                     .append("</code> &middot; ").append(t(zh, "confidence", "置信度"))
-                    .append(": <b>").append(sp.confidence())
+                    .append(": <b>").append(esc(ReportText.confidence(sp.confidence(), language)))
                     .append("</b></p>");
-            assumptions(h, sp.assumptions(), sp.reversalNote(), zh);
+            assumptions(h, sp.assumptions(), sp.reversalNote(), language);
             h.append("</div>");
         }
 
@@ -317,7 +382,7 @@ public final class HtmlReportWriter {
                     .append(t(zh, "diminishing returns beyond", "超过后收益递减"))
                     .append(" <b>").append(ep.kneeCores())
                     .append(" cores</b> &middot; ").append(t(zh, "confidence", "置信度"))
-                    .append(": <b>").append(ep.confidence())
+                    .append(": <b>").append(esc(ReportText.confidence(ep.confidence(), language)))
                     .append("</b></p>");
             // Simple text curve.
             h.append("<table><thead><tr>");
@@ -331,14 +396,15 @@ public final class HtmlReportWriter {
                 h.append("</tr>");
             }
             h.append("</tbody></table>");
-            assumptions(h, ep.assumptions(), null, zh);
+            assumptions(h, ep.assumptions(), null, language);
             h.append("</div>");
         }
         h.append("</section>");
     }
 
     private void assumptions(StringBuilder h, java.util.List<String> assumptions,
-                             String reversalNote, boolean zh) {
+                             String reversalNote, ReportLanguage language) {
+        boolean zh = language != null && language.isChinese();
         if ((assumptions == null || assumptions.isEmpty()) && reversalNote == null) {
             return;
         }
@@ -346,17 +412,18 @@ public final class HtmlReportWriter {
                 .append("</summary><ul class=\"assume\">");
         if (assumptions != null) {
             for (String a : assumptions) {
-                h.append("<li>").append(esc(a)).append("</li>");
+                h.append("<li>").append(esc(ReportText.localizeText(a, language))).append("</li>");
             }
         }
         if (reversalNote != null) {
             h.append("<li><i>").append(t(zh, "Reverses if:", "反转条件："))
-                    .append("</i> ").append(esc(reversalNote)).append("</li>");
+                    .append("</i> ").append(esc(ReportText.localizeText(reversalNote, language))).append("</li>");
         }
         h.append("</ul></details>");
     }
 
-    private void aiPlaceholder(StringBuilder h, AnalysisResult r, boolean zh) {
+    private void aiPlaceholder(StringBuilder h, AnalysisResult r, ReportLanguage language) {
+        boolean zh = language != null && language.isChinese();
         h.append("<section><h2>").append(t(zh, "Tuning advice", "调优建议")).append("</h2>");
         AnalysisResult.AiAdvice advice = r.aiAdvice();
         if (advice == null) {
@@ -375,13 +442,16 @@ public final class HtmlReportWriter {
         }
         if (advice.recommendations() != null && !advice.recommendations().isEmpty()) {
             for (Recommendation rec : advice.recommendations()) {
-                h.append("<div class=\"rec\"><b>").append(rec.type()).append(":</b> ")
-                        .append(esc(rec.action()));
-                if (!Strings.isBlank(rec.rationale())) {
-                    h.append(" — <span class=\"muted\">").append(esc(rec.rationale())).append("</span>");
+                Recommendation shown = ReportText.localize(rec, language);
+                h.append("<div class=\"rec\"><b>")
+                        .append(esc(ReportText.recommendationType(shown.type(), language)))
+                        .append(":</b> ")
+                        .append(esc(shown.action()));
+                if (!Strings.isBlank(shown.rationale())) {
+                    h.append(" — <span class=\"muted\">").append(esc(shown.rationale())).append("</span>");
                 }
-                if (!Strings.isBlank(rec.expectedImpact())) {
-                    h.append(" <span class=\"muted\">[").append(esc(rec.expectedImpact())).append("]</span>");
+                if (!Strings.isBlank(shown.expectedImpact())) {
+                    h.append(" <span class=\"muted\">[").append(esc(shown.expectedImpact())).append("]</span>");
                 }
                 h.append("</div>");
             }
@@ -396,6 +466,83 @@ public final class HtmlReportWriter {
         h.append("<details><summary>").append(t(zh, "Show JSON", "显示 JSON"))
                 .append("</summary><pre class=\"json\">")
                 .append(esc(jsonWriter.toJson(r))).append("</pre></details></section>");
+    }
+
+    private Finding topFinding(List<Finding> findings) {
+        if (findings == null || findings.isEmpty()) {
+            return null;
+        }
+        Finding best = findings.get(0);
+        for (Finding f : findings) {
+            if (f.severity().ordinal() > best.severity().ordinal()) {
+                best = f;
+            }
+        }
+        return best;
+    }
+
+    private String executorVerdict(ExecutorScalingPrediction p, boolean zh) {
+        if (p == null) {
+            return t(zh, "No estimate", "无估计");
+        }
+        if (p.kneeCores() <= p.currentCores()) {
+            return t(zh, "Adding cores has limited ROI", "继续加 Core 收益有限");
+        }
+        return t(zh, "More cores may help until ", "增加 Core 可能有效，拐点约 ")
+                + p.kneeCores() + t(zh, " cores", " Core");
+    }
+
+    private String shuffleVerdict(ShufflePartitionPrediction p, boolean zh) {
+        if (p == null) {
+            return t(zh, "No shuffle target", "无 shuffle 目标");
+        }
+        if (p.direction() == ShufflePartitionPrediction.Direction.SKEW_LIMITED) {
+            return t(zh, "Fix skew before partitions", "先处理倾斜，再调分区");
+        }
+        if (p.direction() == ShufflePartitionPrediction.Direction.FASTER_IF_INCREASED) {
+            return t(zh, "Increase partitions", "建议增加分区");
+        }
+        if (p.direction() == ShufflePartitionPrediction.Direction.FASTER_IF_DECREASED) {
+            return t(zh, "Decrease partitions", "建议减少分区");
+        }
+        return t(zh, "Near current optimum", "当前接近最优");
+    }
+
+    private String planShape(String plan, boolean zh) {
+        if (Strings.isBlank(plan)) {
+            return "";
+        }
+        java.util.List<String> signals = new java.util.ArrayList<String>();
+        if (plan.contains("BroadcastHashJoin") || plan.contains("BroadcastNestedLoopJoin")) {
+            signals.add(t(zh, "broadcast join", "broadcast join"));
+        }
+        if (plan.contains("SortMergeJoin")) {
+            signals.add(t(zh, "shuffle SortMergeJoin", "shuffle SortMergeJoin"));
+        }
+        if (plan.contains("Exchange")) {
+            signals.add(t(zh, "Exchange/shuffle", "Exchange/shuffle"));
+        }
+        if (plan.contains("HashAggregate") || plan.contains("ObjectHashAggregate")) {
+            signals.add(t(zh, "aggregate", "聚合"));
+        }
+        if (plan.contains("Sort")) {
+            signals.add(t(zh, "sort", "排序"));
+        }
+        if (signals.isEmpty()) {
+            return "";
+        }
+        return String.join(", ", signals);
+    }
+
+    private String shortText(String value, int max) {
+        if (value == null || value.length() <= max) {
+            return value;
+        }
+        return value.substring(0, Math.max(0, max - 3)) + "...";
+    }
+
+    private String diagValue(String value) {
+        return "<span class=\"diag-v\">" + value + "</span>";
     }
 
     // ---- small builders --------------------------------------------------------
@@ -423,13 +570,6 @@ public final class HtmlReportWriter {
         return zh ? zhText : en;
     }
 
-    private static boolean isChineseOutput(Path out) {
-        if (out == null || out.getFileName() == null) {
-            return false;
-        }
-        return out.getFileName().toString().contains("_zh");
-    }
-
     private String css() {
         return String.join("\n",
                 ":root{--bg:#0f1419;--panel:#161b22;--line:#2b333d;--fg:#e6edf3;--muted:#8b949e;",
@@ -453,6 +593,7 @@ public final class HtmlReportWriter {
                 "  padding:12px 16px;min-width:140px}",
                 ".card.warn{border-color:var(--warn)}",
                 ".card-v{font-size:20px;font-weight:700}.card-l{color:var(--muted);font-size:12px}",
+                ".card-v .diag-v{display:block;font-size:13px;line-height:1.35;font-weight:600}",
                 "table{width:100%;border-collapse:collapse;font-size:13px}",
                 "th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line)}",
                 "th{color:var(--muted);font-weight:600}",

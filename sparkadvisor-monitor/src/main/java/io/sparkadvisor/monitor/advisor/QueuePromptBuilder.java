@@ -2,6 +2,7 @@ package io.sparkadvisor.monitor.advisor;
 
 import io.sparkadvisor.monitor.aggregate.QueueAnalysisResult;
 import io.sparkadvisor.monitor.render.QueueJsonWriter;
+import io.sparkadvisor.report.i18n.ReportLanguage;
 
 /**
  * Builds queue-level prompts for LLM advice.
@@ -13,6 +14,15 @@ import io.sparkadvisor.monitor.render.QueueJsonWriter;
 public final class QueuePromptBuilder {
 
     private final QueueJsonWriter jsonWriter = new QueueJsonWriter();
+    private final ReportLanguage language;
+
+    public QueuePromptBuilder() {
+        this(ReportLanguage.EN);
+    }
+
+    public QueuePromptBuilder(ReportLanguage language) {
+        this.language = language == null ? ReportLanguage.EN : language;
+    }
 
     public String systemPrompt() {
         return String.join("\n",
@@ -31,6 +41,9 @@ public final class QueuePromptBuilder {
                 "   report says contention or memory pressure is inferred.",
                 "4. Prefer global Spark configuration or queue policy changes; mention SQL rewrites",
                 "   only when repeated slow-query patterns justify them.",
+                language.isChinese()
+                        ? "5. Use Simplified Chinese for user-facing prose; keep Spark config keys, enum values, and parameter names in their original English form."
+                        : "5. Use English for user-facing prose.",
                 "",
                 "Respond with ONLY a JSON object, no prose around it, of exactly this shape:",
                 "{",

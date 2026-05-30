@@ -11,6 +11,7 @@ import io.sparkadvisor.core.analyze.StageAnalysis;
 import io.sparkadvisor.core.finding.Finding;
 import io.sparkadvisor.core.finding.Recommendation;
 import io.sparkadvisor.core.finding.Severity;
+import io.sparkadvisor.report.i18n.ReportLanguage;
 import io.sparkadvisor.report.model.AnalysisResult;
 import org.junit.jupiter.api.Test;
 
@@ -59,6 +60,14 @@ class AdvisorTest {
         var advice = new RuleBasedAdvisor().advise(r);
         assertTrue(advice.summary().toLowerCase().contains("healthy")
                 || advice.summary().toLowerCase().contains("no rule findings"));
+    }
+
+    @Test
+    void ruleBasedAdvisorCanReturnChineseAdvice() {
+        var advice = new RuleBasedAdvisor(ReportLanguage.ZH).advise(resultWithFindings());
+        assertTrue(advice.summary().contains("该 SQL"));
+        assertTrue(advice.summary().contains("首要处理"));
+        assertTrue(advice.recommendations().get(0).action().contains("spark.sql.adaptive.skewJoin.enabled"));
     }
 
     @Test

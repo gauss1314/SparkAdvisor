@@ -1,6 +1,7 @@
 package io.sparkadvisor.advisor.llm;
 
 import io.sparkadvisor.report.json.JsonReportWriter;
+import io.sparkadvisor.report.i18n.ReportLanguage;
 import io.sparkadvisor.report.model.AnalysisResult;
 
 /**
@@ -18,6 +19,15 @@ import io.sparkadvisor.report.model.AnalysisResult;
 public final class PromptBuilder {
 
     private final JsonReportWriter jsonWriter = new JsonReportWriter();
+    private final ReportLanguage language;
+
+    public PromptBuilder() {
+        this(ReportLanguage.EN);
+    }
+
+    public PromptBuilder(ReportLanguage language) {
+        this.language = language == null ? ReportLanguage.EN : language;
+    }
 
     public String systemPrompt() {
         return String.join("\n",
@@ -35,6 +45,9 @@ public final class PromptBuilder {
                 "   NOT suggest enabling it; if a prediction says a stage is skew-limited, do NOT",
                 "   suggest repartitioning as the fix.",
                 "4. Be honest about uncertainty — these are estimates.",
+                language.isChinese()
+                        ? "5. Use Simplified Chinese for user-facing prose; keep Spark config keys, enum values, and parameter names in their original English form."
+                        : "5. Use English for user-facing prose.",
                 "",
                 "Respond with ONLY a JSON object, no prose around it, of exactly this shape:",
                 "{",

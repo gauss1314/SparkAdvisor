@@ -6,6 +6,7 @@ import io.sparkadvisor.advisor.llm.LlmAdvisor;
 import io.sparkadvisor.advisor.llm.LlmProvider;
 import io.sparkadvisor.advisor.llm.MinimaxLlmProvider;
 import io.sparkadvisor.advisor.rule.RuleBasedAdvisor;
+import io.sparkadvisor.report.i18n.ReportLanguage;
 
 /**
  * Selects a {@link TuningAdvisor} by mode. Keeps advisor wiring in one place so the CLI/UI
@@ -20,16 +21,20 @@ public final class AdvisorFactory {
      * @return the advisor, or null for "none"
      */
     public static TuningAdvisor forMode(String mode) {
+        return forMode(mode, ReportLanguage.EN);
+    }
+
+    public static TuningAdvisor forMode(String mode, ReportLanguage language) {
         if (mode == null) {
-            return new RuleBasedAdvisor();
+            return new RuleBasedAdvisor(language);
         }
         String m0 = mode.trim().toLowerCase();
         if ("none".equals(m0)) return null;
         if ("llm".equals(m0) || "minimax".equals(m0) || "llm:minimax".equals(m0) || "llm:minimax-m2.5".equals(m0)
                 || "anthropic".equals(m0) || "claude".equals(m0) || "llm:anthropic".equals(m0) || "llm:claude".equals(m0)) {
-            return new LlmAdvisor(llmProviderForMode(mode));
+            return new LlmAdvisor(llmProviderForMode(mode), language);
         }
-        return new RuleBasedAdvisor();
+        return new RuleBasedAdvisor(language);
     }
 
     /**

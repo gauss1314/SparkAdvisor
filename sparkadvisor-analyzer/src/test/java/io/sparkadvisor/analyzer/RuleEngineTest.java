@@ -145,4 +145,35 @@ class RuleEngineTest {
                 15000, 10000, 2000, 0.5, 0.8, java.util.Arrays.asList(st));
         assertEquals(null, byRule(analyzer.analyze(sqlWithPlan, conf()), "R7_BROADCAST_JOIN"));
     }
+
+    @Test
+    void detectsShuffleFetchWait() {
+        var st = new StageAnalysis(6, 50, 10000, 1200, 700, 100000, 1.7, 1.3,
+                2_000_000_000L, 0, 0, 0.01, 0, 0, 0,
+                30_000L, 1_800_000_000L, 0, 0);
+        var f = byRule(analyzer.analyze(sql(0.8, java.util.Arrays.asList(st)), conf()),
+                "R9_SHUFFLE_FETCH_WAIT");
+        assertNotNull(f);
+        assertEquals("shuffle", f.category());
+    }
+
+    @Test
+    void detectsTaskRetries() {
+        var st = new StageAnalysis(7, 100, 10000, 1200, 700, 100000, 1.7, 1.3,
+                0, 0, 0, 0.01, 0, 0, 0,
+                0L, 0L, 2, 3);
+        var f = byRule(analyzer.analyze(sql(0.8, java.util.Arrays.asList(st)), conf()),
+                "R10_TASK_RETRY");
+        assertNotNull(f);
+        assertEquals(Severity.WARN, f.severity());
+    }
+
+    @Test
+    void attributesSpillToSortOrAggregatePlan() {
+        var st = stage(8, 1.1, 0, 1_000_000_000L, 900_000_000L, 0.0, 0, 5000, 600, 500);
+        var sqlWithPlan = new SqlAnalysis(42L, "stmt", "select 1",
+                "== Physical Plan ==\nHashAggregate(keys=[k])\n+- Sort [k]\n   +- Exchange hashpartitioning(k)",
+                15000, 10000, 2000, 0.5, 0.8, java.util.Arrays.asList(st));
+        assertNotNull(byRule(analyzer.analyze(sqlWithPlan, conf()), "R11_SORT_AGG_SPILL"));
+    }
 }

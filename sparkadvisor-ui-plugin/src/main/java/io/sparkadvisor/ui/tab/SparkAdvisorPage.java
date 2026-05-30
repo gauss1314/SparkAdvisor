@@ -1,6 +1,7 @@
 package io.sparkadvisor.ui.tab;
 
 import io.sparkadvisor.core.util.Strings;
+import io.sparkadvisor.report.i18n.ReportLanguage;
 import io.sparkadvisor.ui.render.AnalysisCoordinator;
 import io.sparkadvisor.ui.render.EventLogPathResolver;
 import io.sparkadvisor.ui.render.QueueAnalysisCoordinator;
@@ -52,20 +53,21 @@ public final class SparkAdvisorPage extends WebUIPage {
     @Override
     public Seq<Node> render(HttpServletRequest request) {
         String statementId = request.getParameter("statementId");
+        ReportLanguage language = resolveLanguage(request);
         String appId = appId();
         String path = pathResolver.pathFor(appId);
 
         String bodyHtml;
         try {
             String css = coordinator.stylesheet();
-            String form = searchForm(statementId);
+            String form = searchForm(statementId, language);
             String report;
             if (Strings.isBlank(statementId)) {
                 css = css + "\n" + queueCoordinator.stylesheet();
                 report = queueCoordinator.renderBody(
-                        path, QueueAnalyzer.DEFAULT_TOP_N, QueueAnalyzer.DEFAULT_BUCKET_MS);
+                        path, QueueAnalyzer.DEFAULT_TOP_N, QueueAnalyzer.DEFAULT_BUCKET_MS, language);
             } else {
-                report = coordinator.renderBody(path, statementId);
+                report = coordinator.renderBody(path, statementId, language);
             }
             bodyHtml = "<style>" + css + "</style>"
                     + "<div class=\"sparkadvisor-root\">" + form + report + "</div>";
@@ -85,16 +87,23 @@ public final class SparkAdvisorPage extends WebUIPage {
         return nodeSeq(new Unparsed(bodyHtml));
     }
 
-    private String searchForm(String current) {
+    private String searchForm(String current, ReportLanguage language) {
         String val = current == null ? "" : escapeAttr(current);
+        boolean zh = language != null && language.isChinese();
+        String lang = language == null ? "en" : (language.isChinese() ? "zh" : "en");
         return "<div style=\"padding:12px 0\">"
                 + "<form method=\"get\">"
                 + "<label style=\"font-size:13px;color:#8b949e\">StatementID&nbsp;</label>"
                 + "<input type=\"text\" name=\"statementId\" value=\"" + val + "\" "
                 + "placeholder=\"e.g. 20260521_abc123\" style=\"padding:4px 8px;width:280px\"/> "
-                + "<button type=\"submit\" style=\"padding:4px 12px\">Analyze SQL</button>"
+                + "<select name=\"lang\" style=\"padding:4px 8px\">"
+                + "<option value=\"zh\"" + ("zh".equals(lang) ? " selected" : "") + ">中文</option>"
+                + "<option value=\"en\"" + ("en".equals(lang) ? " selected" : "") + ">English</option>"
+                + "</select> "
+                + "<button type=\"submit\" style=\"padding:4px 12px\">"
+                + (zh ? "分析 SQL" : "Analyze SQL") + "</button>"
                 + "<span style=\"margin-left:10px;color:#8b949e;font-size:12px\">"
-                + "leave blank for the queue report</span>"
+                + (zh ? "留空查看队列报告" : "leave blank for the queue report") + "</span>"
                 + "</form></div>";
     }
 
@@ -102,6 +111,19 @@ public final class SparkAdvisorPage extends WebUIPage {
         return "<div class=\"banner warn\">Could not analyze event log at <code>"
                 + escapeText(path) + "</code>: " + escapeText(String.valueOf(t.getMessage()))
                 + "</div>";
+    }
+
+    private ReportLanguage resolveLanguage(HttpServletRequest request) {
+        String configured = "auto";
+        try {
+            configured = ui.conf().get("spark.sparkadvisor.lang", "auto"); // VERIFY@3.5.1
+        } catch (Throwable t) {
+            configured = "auto";
+        }
+        return ReportLanguage.resolveForUi(
+                request.getParameter("lang"),
+                configured,
+                request.getHeader("Accept-Language"));
     }
 
     private String appId() {

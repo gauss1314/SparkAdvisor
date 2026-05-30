@@ -58,8 +58,9 @@
   </dependencies>
 
   <build>
-    <!-- Build a fat-jar bundling our engine (core/analyzer/predictor/report) + jackson/t-digest,
-         while keeping Spark/Hadoop provided. Drop this single jar into the SHS classpath. -->
+    <!-- Build a fat-jar bundling our engine (core/analyzer/predictor/report) + t-digest,
+         while keeping Spark/Hadoop and Spark's Jackson stack provided. Drop this single jar
+         into the SHS classpath. -->
     <finalName>sparkadvisor-ui-plugin</finalName>
     <plugins>
       <plugin>
@@ -71,6 +72,15 @@
             <goals><goal>shade</goal></goals>
             <configuration>
               <createDependencyReducedPom>false</createDependencyReducedPom>
+              <!-- Spark History Server provides Jackson at runtime. Do not shade our
+                   compile-time Jackson, otherwise Spark's jackson-module-scala can be
+                   paired with the wrong jackson-databind version. -->
+              <artifactSet>
+                <excludes>
+                  <exclude>com.fasterxml.jackson.core:*</exclude>
+                  <exclude>com.fasterxml.jackson.module:jackson-module-scala_*</exclude>
+                </excludes>
+              </artifactSet>
               <!-- Merge META-INF/services so our AppHistoryServerPlugin service file
                    is preserved alongside any others. -->
               <transformers>

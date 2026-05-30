@@ -28,6 +28,8 @@ fi
 
 # --- 3) Classpath: bundle Spark + Hadoop jars from the cluster client -----------
 # Spark/Hadoop are 'provided' in the build, so supply them at runtime here.
+# Put Spark jars before SparkAdvisor's fat jar so Spark's Jackson/Scala stack wins
+# even if an older built jar accidentally still contains shaded Jackson classes.
 # Prefer the env exported by bigdata_env; fall back to common locations.
 SPARK_HOME="${SPARK_HOME:-/opt/client/Spark2x/spark}"
 HADOOP_CONF_DIR="${HADOOP_CONF_DIR:-/opt/client/HDFS/hadoop/etc/hadoop}"
@@ -37,9 +39,9 @@ if command -v hadoop >/dev/null 2>&1; then
   HADOOP_CP="$(hadoop classpath --glob 2>/dev/null || hadoop classpath 2>/dev/null || true)"
 fi
 if [[ -n "${HADOOP_CP}" ]]; then
-  CP="${JAR}:${HADOOP_CONF_DIR}:${HADOOP_CP}:${SPARK_HOME}/jars/*"
+  CP="${HADOOP_CONF_DIR}:${SPARK_HOME}/jars/*:${HADOOP_CP}:${JAR}"
 else
-  CP="${JAR}:${HADOOP_CONF_DIR}:${SPARK_HOME}/jars/*"
+  CP="${HADOOP_CONF_DIR}:${SPARK_HOME}/jars/*:${JAR}"
 fi
 
 # --- 4) JVM flags ---------------------------------------------------------------

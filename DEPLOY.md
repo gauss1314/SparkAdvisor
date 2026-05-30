@@ -188,6 +188,7 @@ bin/sparkadvisor analyze \
 | `--hadoop-conf-dir` | 覆盖环境变量中的 Hadoop 配置目录。 |
 | `--auth-to-local` | 覆盖 Hadoop `hadoop.security.auth_to_local` 规则；也可用环境变量 `SPARKADVISOR_AUTH_TO_LOCAL`。 |
 | `--advise none|rule|llm` | Advisor 模式，默认 `rule`；`llm` 默认调用 MiniMax-M2.5，需要 `MINIMAX_API_KEY`。可用 `llm:claude` 走 Anthropic。 |
+| `--lang auto|zh|en` | 报告语言，默认 `auto`；`auto` 下输出文件名包含 `_zh` 时生成中文，否则英文。 |
 
 LLM 模式只发送结构化 `AnalysisResult` JSON，不发送 raw event log：
 
@@ -201,7 +202,7 @@ bin/sparkadvisor analyze \
   --out ./report-llm_zh.html
 ```
 
-HTML 输出文件名包含 `_zh` 时生成中文报告，否则生成英文报告。
+报告语言可用 `--lang zh|en` 显式指定；默认 `auto` 保留“HTML 输出文件名包含 `_zh` 时生成中文报告”的兼容行为。
 可选环境变量：`MINIMAX_MODEL` 覆盖默认模型，`MINIMAX_BASE_URL` 指向内部网关或代理。
 
 ### 3.2 队列级报告
@@ -241,6 +242,7 @@ bin/sparkadvisor queue-report \
 | `--hadoop-conf-dir` | 覆盖环境变量中的 Hadoop 配置目录。 |
 | `--auth-to-local` | 覆盖 Hadoop `hadoop.security.auth_to_local` 规则；也可用环境变量 `SPARKADVISOR_AUTH_TO_LOCAL`。 |
 | `--advise none|llm` | 队列级 AI Advisor，默认 `none`；`llm` 默认调用 MiniMax-M2.5，只发送结构化 `QueueAnalysisResult`。 |
+| `--lang auto|zh|en` | 报告语言，默认 `auto`；`auto` 下输出文件名包含 `_zh` 时生成中文，否则英文。 |
 
 队列报告包含：
 

@@ -8,8 +8,8 @@ SparkAdvisor 是一个以 **Java 8 运行时兼容** 为目标、面向 **Apache
 
 - **离线解析 event log**：支持单文件、rolling event log 目录、压缩日志与 `.inprogress` 不完整日志。
 - **StatementID 定位 SQL**：通过 SQL 开头的 `/* StatementID */` 注释定位目标语句；若输入纯数字且没有 StatementID 命中，则回退按 `executionId` 定位。
-- **硬指标分析**：计算关键路径、理想耗时、实际墙钟、核心利用率、倾斜比、spill 比例、GC 占比、调度延迟等实测指标。
-- **规则诊断**：内置 8 条 AQE 感知规则，覆盖数据倾斜、spill、并发不足、过度并行、小文件、GC、broadcast join 机会与调度等待。
+- **硬指标分析**：计算关键路径、理想耗时、实际墙钟、核心利用率、倾斜比、spill、GC 占比、Stage 启动/资源等待、shuffle fetch wait 与 task attempt 等指标。
+- **规则诊断**：当前单 SQL 规则目录列出 R1-R11 共 11 条规则；其中一部分对应 AQE / 物理计划机会，另一部分对应 event-log 运行时症状。规则说明见 [docs/rules.md](docs/rules.md)，运行时仍以 Java `RuleEngine` 为准。
 - **调参预测**：对 shuffle partition 与 executor/core 伸缩做成本模型估计，输出假设、置信度和可能反转条件；倾斜场景会明确提示“调分区通常无效”。
 - **Advisor 建议**：默认使用离线确定性的 `RuleBasedAdvisor`；可通过 `--advise llm` 调用 LLM Advisor，默认 Provider 为 MiniMax-M2.5。LLM 只消费结构化 `AnalysisResult` / `QueueAnalysisResult` JSON，绝不发送原始 event log。
 - **队列级监控分析**：`queue-report` 汇总一整个长驻应用的所有 SQL，输出延迟分位、瓶颈聚类、固定资源池利用率、争用受限查询、资源大户与全局调参建议。
@@ -100,6 +100,7 @@ bin/sparkadvisor analyze \
 | `--hadoop-conf-dir` | 覆盖环境变量中的 Hadoop 配置目录。 |
 | `--auth-to-local` | 覆盖 Hadoop `hadoop.security.auth_to_local` 规则；也可用环境变量 `SPARKADVISOR_AUTH_TO_LOCAL`。 |
 | `--advise none\|rule\|llm` | Advisor 模式，默认 `rule`；`llm` 默认调用 MiniMax-M2.5，需要 `MINIMAX_API_KEY`。可用 `llm:claude` 走 Anthropic。 |
+| `--lang auto\|zh\|en` | 报告语言，默认 `auto`；`auto` 下输出文件名包含 `_zh` 时生成中文，否则英文。 |
 
 `bin/sparkadvisor` 默认给 CLI 设置 `-Xmx4g`，用于覆盖 JDK 在容器/客户端节点上可能选择的较小默认堆，避免 Spark `JsonProtocol` 回放 100MB+ JSON event-log part 时 OOM。可用 `SPARKADVISOR_HEAP=8g` 调整，或用 `SPARKADVISOR_JAVA_OPTS="-Xmx8g -XX:+UseG1GC"` 直接追加 JVM 参数。
 
@@ -115,7 +116,7 @@ bin/sparkadvisor analyze \
   --out ./report-llm_zh.html
 ```
 
-`--advise llm` 只会发送结构化 `AnalysisResult`，不会发送 GB 级 raw event log。HTML 输出文件名包含 `_zh` 时生成中文报告，否则生成英文报告。
+`--advise llm` 只会发送结构化 `AnalysisResult`，不会发送 GB 级 raw event log。报告语言可用 `--lang zh|en` 显式指定；默认 `auto` 保留“HTML 输出文件名包含 `_zh` 时生成中文报告”的兼容行为。
 可选环境变量：`MINIMAX_MODEL` 覆盖默认模型，`MINIMAX_BASE_URL` 指向内部网关或代理。
 
 队列级历史报告：
@@ -130,7 +131,7 @@ bin/sparkadvisor queue-report \
   --advise llm
 ```
 
-`queue-report` 用于分析一个完整长驻查询队列应用的一整轮 event log。`--top` 控制深度分析的最慢 SQL 数量；其它 SQL 仍进入吞吐、延迟和趋势聚合。`--bucket` 支持 `15m`、`1h`、`3600s` 等形式。队列级 `--advise llm` 同样默认使用 MiniMax-M2.5，并只发送结构化 `QueueAnalysisResult`。
+`queue-report` 用于分析一个完整长驻查询队列应用的一整轮 event log。`--top` 控制深度分析的最慢 SQL 数量；其它 SQL 仍进入吞吐、延迟和趋势聚合。`--bucket` 支持 `15m`、`1h`、`3600s` 等形式。队列级 `--advise llm` 同样默认使用 MiniMax-M2.5，并只发送结构化 `QueueAnalysisResult`。报告语言同样支持 `--lang auto|zh|en`。
 
 ## History Server 插件
 
@@ -167,7 +168,7 @@ HTML 报告包含：
 - Recommendations：SQL 改写与 Spark 配置建议
 - Advisor 输出：规则版或 LLM 版摘要与建议
 - 页面底部内嵌完整 `AnalysisResult` JSON
-- 文件名包含 `_zh` 时输出中文 HTML；否则输出英文 HTML
+- `--lang zh|en` 可显式指定报告语言；默认 `auto` 下文件名包含 `_zh` 时输出中文 HTML，否则输出英文 HTML
 
 示例报告见 [samples/demo-report.html](samples/demo-report.html)。
 

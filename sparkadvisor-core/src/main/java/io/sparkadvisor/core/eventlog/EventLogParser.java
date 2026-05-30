@@ -3,13 +3,11 @@ package io.sparkadvisor.core.eventlog;
 import io.sparkadvisor.core.model.ApplicationModel;
 import io.sparkadvisor.core.util.ValueObjects;
 
-import org.apache.spark.scheduler.ReplayListenerBus;
-
 import java.io.InputStream;
 import java.util.logging.Logger;
 
 /**
- * Parses a Spark event log by replaying it through Spark's own {@link ReplayListenerBus}
+ * Parses a Spark event log by replaying it through Spark's own {@code org.apache.spark.scheduler.ReplayListenerBus}
  * (the same machinery the History Server uses), feeding a {@link SparkEventCollector}.
  *
  * <p>This deliberately reuses {@code ReplayListenerBus} + {@code JsonProtocol} instead of
@@ -40,11 +38,10 @@ public final class EventLogParser {
      */
     public ApplicationModel parse(InputStream in, String sourceName, boolean maybeTruncated,
                                   boolean collectTaskIntervals) {
-        ReplayListenerBus bus = new ReplayListenerBus();
+        ReplayListenerBusAdapter bus = ReplayListenerBusAdapter.create();
         SparkEventCollector collector = new SparkEventCollector(collectTaskIntervals);
         bus.addListener(collector);
-        // VERIFY@3.5.1: Spark 3.5.1 exposes replay(InputStream, String, boolean, Function1).
-        bus.replay(in, sourceName, maybeTruncated, ReplayListenerBus.SELECT_ALL_FILTER());
+        bus.replay(in, sourceName, maybeTruncated);
         ApplicationModel model = collector.build();
         if (model.incomplete()) {
             LOG.warning(() -> "Event log appears incomplete/truncated: " + sourceName);
@@ -68,15 +65,14 @@ public final class EventLogParser {
      */
     public ApplicationModel parseRolling(java.util.List<EventLogPart> parts, boolean maybeTruncated,
                                          boolean collectTaskIntervals) {
-        ReplayListenerBus bus = new ReplayListenerBus();
+        ReplayListenerBusAdapter bus = ReplayListenerBusAdapter.create();
         SparkEventCollector collector = new SparkEventCollector(collectTaskIntervals);
         bus.addListener(collector);
         for (int i = 0; i < parts.size(); i++) {
             EventLogPart part = parts.get(i);
             boolean lastPart = (i == parts.size() - 1);
             // Only the last part may be truncated.
-            bus.replay(part.stream(), part.sourceName(), maybeTruncated && lastPart,
-                    ReplayListenerBus.SELECT_ALL_FILTER());
+            bus.replay(part.stream(), part.sourceName(), maybeTruncated && lastPart);
         }
         return collector.build();
     }

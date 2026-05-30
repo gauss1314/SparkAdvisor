@@ -23,7 +23,9 @@ import java.util.regex.Pattern;
  *       elsewhere in the SQL body are ignored, so we never mis-pick a comment from
  *       inside the query.</li>
  *   <li>Leading whitespace before the comment is tolerated.</li>
- *   <li>ID charset is configurable; default {@code [A-Za-z0-9_-]+}.</li>
+ *   <li>The default extractor treats the whole leading comment body as the ID, so
+ *       IDs such as {@code DAC c99ddc63-...} are supported. Surrounding whitespace
+ *       is trimmed and internal whitespace runs are normalized to one ASCII space.</li>
  *   <li>Comparison/keeping is case-sensitive (StatementIDs are typically case-sensitive).</li>
  * </ul>
  */
@@ -31,7 +33,7 @@ public final class StatementIdExtractor {
 
     /** Anchored at start (after optional whitespace): /* <id> *​/ */
     private static final Pattern LEADING_COMMENT =
-            Pattern.compile("^\\s*/\\*\\s*([A-Za-z0-9_\\-]+)\\s*\\*/");
+            Pattern.compile("^\\s*/\\*\\s*(.*?)\\s*\\*/", Pattern.DOTALL);
 
     private final Pattern pattern;
 
@@ -58,7 +60,8 @@ public final class StatementIdExtractor {
         }
         Matcher m = pattern.matcher(sqlText);
         if (m.find()) {
-            return Optional.of(m.group(1));
+            String id = normalize(m.group(1));
+            return id.isEmpty() ? Optional.empty() : Optional.of(id);
         }
         return Optional.empty();
     }
@@ -76,5 +79,13 @@ public final class StatementIdExtractor {
             return fromPrimary;
         }
         return extract(secondary);
+    }
+
+    /** Normalize the same way for extracted IDs and user-supplied lookup keys. */
+    public static String normalize(String id) {
+        if (id == null) {
+            return "";
+        }
+        return id.trim().replaceAll("\\s+", " ");
     }
 }

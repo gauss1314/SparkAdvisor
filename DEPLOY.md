@@ -127,6 +127,7 @@ bin/sparkadvisor <subcommand> [options]
 - `source /opt/client/bigdata_env`
 - `kinit -kt /opt/client/keytab/ossuser.keytab ossuser`
 - 拼接集群 Spark/Hadoop classpath
+- 默认添加 `-Xmx4g`，避免 Spark `JsonProtocol` 回放 100MB+ JSON event-log part 时因 JVM 默认堆过小 OOM；可用 `SPARKADVISOR_HEAP` 或 `SPARKADVISOR_JAVA_OPTS` 覆盖
 - 在 JDK 9+ 上添加 Spark 3.5.1 需要的 `--add-opens`；Java 8 下不会添加
 
 默认 jar 路径为：
@@ -139,6 +140,14 @@ sparkadvisor-cli/target/sparkadvisor-cli.jar
 
 ```bash
 export SPARKADVISOR_JAR=/path/to/sparkadvisor-cli.jar
+```
+
+如需调整 CLI JVM 堆大小（默认 `4g`）：
+
+```bash
+export SPARKADVISOR_HEAP=8g
+# 或直接传额外 JVM 参数；若其中包含 -Xmx，脚本不会再追加默认堆大小
+export SPARKADVISOR_JAVA_OPTS="-Xmx8g -XX:+UseG1GC"
 ```
 
 ### 3.1 单 SQL 报告

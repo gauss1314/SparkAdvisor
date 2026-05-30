@@ -35,10 +35,10 @@ public final class SqlLocator {
         if (Strings.isBlank(id)) {
             return Java8Collections.listOf();
         }
-        String key = id.trim();
+        String key = StatementIdExtractor.normalize(id);
 
         List<SqlExecution> byStatement = app.sqlExecutions().stream()
-                .filter(s -> key.equals(s.statementId()))
+                .filter(s -> key.equals(StatementIdExtractor.normalize(s.statementId())))
                 .sorted(Comparator.comparingLong(SqlExecution::wallClockMs).reversed())
                 .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
 

@@ -57,6 +57,15 @@ fi
 
 JAVA_OPTS=(-Dfile.encoding=UTF-8)
 
+# Spark event-log replay parses each JSON event through Spark JsonProtocol. Even
+# though SparkAdvisor aggregates metrics in a streaming way, JsonProtocol/Jackson
+# may transiently hold multiple copies of a large TaskEnd JSON line. JDK container
+# ergonomics can otherwise choose a very small heap, which is not enough for
+# 100MB+ uncompressed event-log parts. Default to a practical CLI heap and allow
+# operators to override it without editing this script.
+SPARKADVISOR_HEAP="${SPARKADVISOR_HEAP:-4g}"
+
+
 # Reuse Hadoop client JVM options exported by the cluster client environment.
 # These often carry required Kerberos/JAAS settings such as
 # -Djava.security.krb5.conf and -Djava.security.auth.login.config. Without
@@ -71,6 +80,19 @@ append_java_opts() {
 }
 append_java_opts "${HADOOP_OPTS:-}"
 append_java_opts "${HADOOP_CLIENT_OPTS:-}"
+
+contains_xmx() {
+  local opts="$1"
+  [[ " ${opts} " == *" -Xmx"* ]]
+}
+
+# Hadoop client environments sometimes export a small -Xmx in HADOOP_OPTS for
+# Hadoop commands. SparkAdvisor is a separate JVM, so prefer our own heap unless
+# the operator explicitly sets an -Xmx in SPARKADVISOR_JAVA_OPTS.
+if [[ -n "${SPARKADVISOR_HEAP}" ]] && ! contains_xmx "${SPARKADVISOR_JAVA_OPTS:-}"; then
+  JAVA_OPTS+=("-Xmx${SPARKADVISOR_HEAP}")
+fi
+append_java_opts "${SPARKADVISOR_JAVA_OPTS:-}"
 
 # Spark 3.5.1 on JDK 9+ may need module opens for replay/reflection. Java 8 does
 # not support --add-opens, so do not pass these flags there.

@@ -24,6 +24,19 @@ class StatementIdExtractorTest {
     }
 
     @Test
+    void extractsStatementIdContainingSpacesAndUuid() {
+        Optional<String> id = extractor.extract(
+                "/* DAC c99ddc63-770f-49e6-8e84-3587cd372a82-1779951600017 */ select 1");
+        assertEquals(Optional.of("DAC c99ddc63-770f-49e6-8e84-3587cd372a82-1779951600017"), id);
+    }
+
+    @Test
+    void normalizesWhitespaceInsideStatementId() {
+        Optional<String> id = extractor.extract("/*  DAC   c99ddc63  */ select 1");
+        assertEquals(Optional.of("DAC c99ddc63"), id);
+    }
+
+    @Test
     void returnsEmptyWhenNoComment() {
         assertTrue(extractor.extract("select * from orders where id = 1").isEmpty());
     }

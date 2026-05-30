@@ -29,12 +29,13 @@ import org.apache.spark.sql.execution.ui.SparkListenerSQLExecutionStart;
 
 import io.sparkadvisor.core.model.ExecutorEvent;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.logging.Logger;
 
 /**
  * A custom {@link SparkListener} (written in Java) that ReplayListenerBus feeds events
@@ -58,8 +59,6 @@ import java.util.logging.Logger;
  */
 public final class SparkEventCollector extends SparkListener {
 
-    private static final Logger LOG = Logger.getLogger(SparkEventCollector.class.getName());
-
     private static final String SQL_EXEC_START =
             "org.apache.spark.sql.execution.ui.SparkListenerSQLExecutionStart";
     private static final String SQL_EXEC_END =
@@ -82,6 +81,7 @@ public final class SparkEventCollector extends SparkListener {
     private final Map<Integer, StageBuilder> stages = new LinkedHashMap<>();
     private final Map<Integer, Long> stageSqlExecutions = new HashMap<>();
     private final List<TaskInterval> taskIntervals = new ArrayList<>();
+    private final Deque<String> pendingThriftStatementIds = new ArrayDeque<>();
 
     private final List<ExecutorEvent> executorEvents = new ArrayList<>();
     private final Map<String, Integer> executorCores = new HashMap<>(); // executorId -> cores
@@ -253,6 +253,9 @@ public final class SparkEventCollector extends SparkListener {
         b.physicalPlanText = s.physicalPlanDescription();
         b.startTime = s.time();
         statementIdExtractor.extract(s.description()).ifPresent(id -> b.statementId = id);
+        if (b.statementId == null && !pendingThriftStatementIds.isEmpty()) {
+            b.statementId = pendingThriftStatementIds.removeFirst();
+        }
     }
 
     private void handleSqlEnd(SparkListenerEvent event) {
@@ -270,15 +273,16 @@ public final class SparkEventCollector extends SparkListener {
     }
 
     private void attachThriftStatementId(String id) {
-        // Best-effort: STS operation start typically precedes the SQL execution; we keep the
-        // id and let the SQLExecutionStart.description take precedence when present.
+        // Best-effort: STS operation start typically precedes the SQL execution. Keep the
+        // id and attach it to the next SQLExecutionStart whose description lacks a leading
+        // StatementID; if the SQL event already exists, fill the first one still missing an id.
         for (SqlExecBuilder b : sqlExecs.values()) {
             if (b.statementId == null) {
                 b.statementId = id;
                 return;
             }
         }
-        LOG.fine(() -> "Thrift StatementID seen but no pending SQL exec to attach: " + id);
+        pendingThriftStatementIds.addLast(id);
     }
 
     // ---- Materialization -------------------------------------------------------

@@ -101,6 +101,8 @@ bin/sparkadvisor analyze \
 | `--auth-to-local` | 覆盖 Hadoop `hadoop.security.auth_to_local` 规则；也可用环境变量 `SPARKADVISOR_AUTH_TO_LOCAL`。 |
 | `--advise none\|rule\|llm` | Advisor 模式，默认 `rule`；`llm` 默认调用 MiniMax-M2.5，需要 `MINIMAX_API_KEY`。可用 `llm:claude` 走 Anthropic。 |
 
+`bin/sparkadvisor` 默认给 CLI 设置 `-Xmx4g`，用于覆盖 JDK 在容器/客户端节点上可能选择的较小默认堆，避免 Spark `JsonProtocol` 回放 100MB+ JSON event-log part 时 OOM。可用 `SPARKADVISOR_HEAP=8g` 调整，或用 `SPARKADVISOR_JAVA_OPTS="-Xmx8g -XX:+UseG1GC"` 直接追加 JVM 参数。
+
 LLM 模式示例：
 
 ```bash

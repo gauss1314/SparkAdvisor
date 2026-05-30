@@ -5,8 +5,6 @@ import io.sparkadvisor.core.model.SqlExecution;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
-import java.util.Map;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -29,6 +27,15 @@ class SqlLocatorTest {
         List<SqlExecution> r = loc.locate("stmt_b");
         assertEquals(1, r.size());
         assertEquals(2, r.get(0).executionId());
+    }
+
+    @Test
+    void locatesStatementIdContainingSpacesAndUuid() {
+        var app = appWith(exec(11, "DAC c99ddc63-770f-49e6-8e84-3587cd372a82-1779951600017", 100));
+        var loc = new SqlLocator(app);
+        List<SqlExecution> r = loc.locate(" DAC   c99ddc63-770f-49e6-8e84-3587cd372a82-1779951600017 ");
+        assertEquals(1, r.size());
+        assertEquals(11, r.get(0).executionId());
     }
 
     @Test

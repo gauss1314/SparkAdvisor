@@ -151,7 +151,7 @@ flowchart LR
 1. **流式逐行**：`ReplayListenerBus` 本就逐行；领域模型只保留聚合所需结构（增量分位数），**禁止**全量 task 驻留。沿用主项目内存策略。
 2. **全量轻特征 + 代表性深分析**：对**全部** SQL 做轻量聚合统计（耗时、stage 数、task 数、input/shuffle/spill/GC/fetch wait/attempt 汇总、计划哈希/模板哈希、是否命中基础症状）。深度 findings+预测不只看最慢 top-N，还要加分层抽样补点，避免全局结论被少量超慢离群查询带偏。
 3. **深分析选择器**：默认 `topN=50`，再从以下分层各取少量样本：时间桶、延迟分位段、计划哈希/模板哈希、表集合、是否 contention-limited、是否 fetch/GC/spill-heavy。若预算不足，top-N 优先，但 `QueueAnalysisResult.meta` 必须暴露深分析覆盖率与抽样策略。
-4. **增量 checkpoint（Tab 入口优先）**：对 rolling event log 记录 `(partName, length, modificationTime, offset)` 与聚合状态；日志未变化直接返回缓存，日志增长时只处理新增区间。若底层 Spark replay API 暂不能稳定从 offset 恢复，则允许降级为后台全量重放，但必须限流、超时、记录 `incremental=false` 并降低 SHS 侧刷新频率。
+4. **增量 checkpoint（Tab 入口优先）**：对 rolling event log 记录 `(partName, length, modificationTime, offset)` 与聚合状态；日志未变化直接返回缓存，日志增长时只处理新增区间。若底层 Spark replay API 暂不能稳定从 offset 恢复，则允许降级为后台全量重放，但必须限流、超时、记录 `incremental=false` 与 `degradedReason` 并降低 SHS 侧刷新频率。缓存/checkpoint key 必须同时包含 snapshot key 与分析参数（如 `topN`、分层样本数、bucket），避免不同报告配置误复用。
 5. **异步 + 有界缓存（仅 Tab 入口）**：见 §9。CLI 入口是离线批处理，可同步全量；SHS 入口必须后台单飞、内存有界、失败不影响其它 app。
 
 ### 5.3 轻特征与深特征边界
@@ -304,7 +304,7 @@ sequenceDiagram
 
 - **SHS 默认就列出运行中 app**（incomplete），按 `spark.history.fs.update.interval`（默认 10s）依据**文件大小变化**间歇刷新。我们读到的就是当时的 `.inprogress` 快照。
 - **容忍不完整**：尾部可能截断、最后若干 SQL 未闭合（无 `SQLExecutionEnd`）。聚合层把"未结束的 SQL"单列为"运行中"，**不混入**已完成统计；`QueueAnalysisResult.meta` 标 `runningSnapshot=true` 和快照时间。
-- **快照键 = appId + rolling part 列表 + 每个 part 的 length/mtime**：日志没增长就直接返回缓存；日志增长时优先从 checkpoint 的最后 part/offset 继续处理，避免重复解析 10 GB。
+- **快照键 = appId + rolling part 列表 + 每个 part 的 length/mtime**：日志没增长就直接返回缓存；日志增长时优先从 checkpoint 的最后 part/offset 继续处理，避免重复解析 10 GB。UI/SHS 的实际缓存键还需拼入 `topN`、分层样本数、bucket 等分析参数。
 - **checkpoint 内容**：至少包含已完成 SQL 轻特征、未闭合 SQL 状态、分位数估计器、瓶颈计数器、时间桶资源效率累加器、ContentionTimeline 扫描线状态、深分析样本选择器状态。checkpoint 版本需要写入 `meta.schemaVersion`，不兼容时允许丢弃重建。
 - **降级路径**：如果 checkpoint 缺失、part 被压缩/清理、尾部截断无法恢复，后台任务可全量重放当前快照，但 `meta.incremental=false`、`meta.incomplete=true` 或 `meta.degradedReason` 需明确暴露。
 - **异步单飞**：同一 app 的解析任务全局只跑一个，避免多用户点击触发并发重放打爆 SHS。**绝不**在 SHS 的 UI 请求线程里同步解析 10 GB（会卡死页面、可能 OOM）。

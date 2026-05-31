@@ -38,6 +38,10 @@ public final class GcPressureRule implements Rule {
                     st.stageId(), st.gcRatio() * 100);
 
             List<Recommendation> recs = new java.util.ArrayList<Recommendation>(java.util.Arrays.asList(
+                    Recommendation.sql(
+                            "review object-heavy UDFs, non-vectorized readers, object aggregation, and cache layout",
+                            "High GC is often caused by allocation churn and Java object expansion before it is a pure heap-size problem.",
+                            "Best root-cause fix when UDFs or row/object paths are present."),
                     Recommendation.conf(
                             "increase executor memory or reduce per-task data "
                                     + "(more partitions / smaller advisory size)",

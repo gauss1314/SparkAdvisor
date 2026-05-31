@@ -79,6 +79,8 @@ class RuleEngineTest {
         var f = byRule(fs, "R2_EXCESSIVE_SPILL");
         assertNotNull(f);
         assertTrue(f.recommendations().get(0).action().contains("advisoryPartitionSizeInBytes"));
+        assertEquals("false", f.evidence().get("memoryOverheadPrimaryFix"));
+        assertEquals("REDUCE_SIDE_SPILL", f.evidence().get("spillSubtype"));
     }
 
     @Test
@@ -89,9 +91,11 @@ class RuleEngineTest {
         assertNotNull(byRule(
                 analyzer.analyze(sql(0.8, java.util.Arrays.asList(stage(4, 1.07, 0, 0, 0, 0.22, 0, 3000, 700, 650))), conf()),
                 "R6_GC_PRESSURE"));
-        assertNotNull(byRule(
+        var scheduling = byRule(
                 analyzer.analyze(sql(0.8, java.util.Arrays.asList(stage(5, 1.05, 0, 0, 0, 0, 5000, 10000, 2000, 1900))), conf()),
-                "R8_SCHEDULING_DELAY"));
+                "R8_SCHEDULING_DELAY");
+        assertNotNull(scheduling);
+        assertEquals("firstTaskLaunchTime - stageSubmissionTime", scheduling.evidence().get("derivedMetric"));
     }
 
     @Test
@@ -134,7 +138,10 @@ class RuleEngineTest {
                 "== Physical Plan ==\nSortMergeJoin [k]\n  Scan a\n  Scan b",
                 15000, 10000, 2000, 0.5, 0.8, java.util.Arrays.asList(st));
         var fs = analyzer.analyze(sqlWithPlan, conf());
-        assertNotNull(byRule(fs, "R7_BROADCAST_JOIN"));
+        var f = byRule(fs, "R7_BROADCAST_JOIN");
+        assertNotNull(f);
+        assertEquals("true", f.evidence().get("requiresStatsCheck"));
+        assertEquals("true", f.evidence().get("requiresJoinTypeAndBuildSideCheck"));
     }
 
     @Test
@@ -166,6 +173,7 @@ class RuleEngineTest {
                 "R10_TASK_RETRY");
         assertNotNull(f);
         assertEquals(Severity.WARN, f.severity());
+        assertEquals("true", f.evidence().get("failedAndSpeculativeAreSeparated"));
     }
 
     @Test
@@ -174,6 +182,8 @@ class RuleEngineTest {
         var sqlWithPlan = new SqlAnalysis(42L, "stmt", "select 1",
                 "== Physical Plan ==\nHashAggregate(keys=[k])\n+- Sort [k]\n   +- Exchange hashpartitioning(k)",
                 15000, 10000, 2000, 0.5, 0.8, java.util.Arrays.asList(st));
-        assertNotNull(byRule(analyzer.analyze(sqlWithPlan, conf()), "R11_SORT_AGG_SPILL"));
+        var f = byRule(analyzer.analyze(sqlWithPlan, conf()), "R11_SORT_AGG_SPILL");
+        assertNotNull(f);
+        assertEquals("false", f.evidence().get("operatorLevelProof"));
     }
 }

@@ -17,8 +17,8 @@ import java.util.Map;
  * <p>The event log does not directly state "a broadcast was rejected", so this is a best-effort
  * heuristic on the physical plan text: if the plan uses {@code SortMergeJoin} (a shuffle join)
  * AND no {@code BroadcastHashJoin} is present, there may be an opportunity to broadcast a small
- * side. We surface this as INFO with explicit caveats — the user must confirm the small side's
- * size, since we cannot size relations from the event log alone.
+ * side. We surface this as INFO with explicit caveats — the user must confirm statistics,
+ * build-side legality, join type, hints, and AQE final-plan behavior.
  *
  * <p>Reported at SQL level. Skipped entirely when no plan text is available.
  */
@@ -46,21 +46,26 @@ public final class BroadcastJoinRule implements Rule {
         Map<String, String> evidence = new LinkedHashMap<>();
         evidence.put("planHasSortMergeJoin", "true");
         evidence.put("planHasBroadcastJoin", "false");
+        evidence.put("requiresStatsCheck", "true");
+        evidence.put("requiresJoinTypeAndBuildSideCheck", "true");
+        evidence.put("aqeRuntimeConversionMayApply", "true");
+        evidence.put("broadcastTimeoutAndMemoryRisk", "true");
 
         String explanation =
                 "The plan uses a shuffle-based SortMergeJoin with no broadcast join present. "
-                        + "If one join side is small, broadcasting it would avoid a shuffle. "
-                        + "(Heuristic — confirm the small side's actual size.)";
+                        + "This may be a broadcast opportunity only if a build side is legally broadcastable, "
+                        + "stats/runtime size prove it is small, hints do not conflict, and AQE did not already "
+                        + "convert the final plan.";
 
         List<Recommendation> recs = new java.util.ArrayList<Recommendation>(java.util.Arrays.asList(
                 Recommendation.conf(
-                        "raise spark.sql.autoBroadcastJoinThreshold if the small side fits in memory",
-                        "Lets Spark auto-broadcast a side under the threshold, replacing the shuffle join.",
-                        "Effective only when one side is genuinely small; too high risks driver OOM."),
+                        "verify table stats / runtime sizeInBytes, then tune spark.sql.autoBroadcastJoinThreshold or spark.sql.adaptive.autoBroadcastJoinThreshold",
+                        "Spark chooses broadcast joins from size statistics and legal build-side rules; without reliable stats this recommendation is low-confidence.",
+                        "Effective only when one side is genuinely small; too high risks broadcast timeout or memory pressure."),
                 Recommendation.sql(
-                        "add a broadcast() hint on the small side",
-                        "Forces a broadcast join regardless of the auto threshold when you know a side is small.",
-                        "Explicit and reliable when the small side is known.")));
+                        "add a broadcast() hint only when join type and small-side memory fit are verified",
+                        "Hints can override planner choices, but incorrect hints may force an unsafe broadcast.",
+                        "Use after confirming EXPLAIN COST / runtime statistics and build side.")));
 
         java.util.List<Finding> out = new java.util.ArrayList<Finding>();
         out.add(new Finding(id(), "join", Severity.INFO, null, explanation, evidence, recs));

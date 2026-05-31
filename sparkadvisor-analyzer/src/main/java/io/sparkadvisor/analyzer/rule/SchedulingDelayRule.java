@@ -12,9 +12,10 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * R8 — Scheduling wait. Triggers when the gap between stage submission and the first task
- * launch is a large fraction of the stage wall clock, indicating resource/scheduling wait
- * (e.g. dynamic-allocation cold start).
+ * R8 — Stage startup / pre-launch gap. Runtime ID remains R8_SCHEDULING_DELAY for JSON
+ * compatibility. This derived metric is the gap between stage submission and first task launch;
+ * it may indicate resource acquisition, scheduler pool contention, dynamic-allocation cold start,
+ * or other pre-launch delay.
  */
 public final class SchedulingDelayRule implements Rule {
 
@@ -41,17 +42,24 @@ public final class SchedulingDelayRule implements Rule {
             evidence.put("schedulingDelayMs", String.valueOf(delay));
             evidence.put("stageWallMs", String.valueOf(wall));
             evidence.put("delayRatio", String.format("%.2f", ratio));
+            evidence.put("derivedMetric", "firstTaskLaunchTime - stageSubmissionTime");
+            evidence.put("resourceQueueingDirectMetric", "false");
 
             String explanation = String.format(
-                    "Stage %d waited %.0f%% of its time before the first task launched, "
-                            + "indicating resource/scheduling wait.", st.stageId(), ratio * 100);
+                    "Stage %d spent %.0f%% of its wall time before the first task launched. "
+                            + "This is a derived pre-launch gap, not a direct Spark resource-queue metric.",
+                    st.stageId(), ratio * 100);
 
             List<Recommendation> recs = new java.util.ArrayList<Recommendation>(java.util.Arrays.asList(
                     Recommendation.conf(
                             "warm up executors (raise spark.dynamicAllocation.minExecutors) "
                                     + "or pre-allocate resources",
                             "Cold-start executor acquisition delays the first tasks.",
-                            "Trades idle capacity for lower latency.")));
+                            "Trades idle capacity for lower latency."),
+                    Recommendation.conf(
+                            "check scheduler mode, FAIR pools, minShare/weight, and queue contention in the queue report",
+                            "A large pre-launch gap can also come from pool contention or FIFO head-of-line blocking.",
+                            "Use queue-level evidence before treating it as executor shortage.")));
 
             findings.add(new Finding(id(), "scheduling", Severity.INFO, st.stageId(),
                     explanation, evidence, recs));

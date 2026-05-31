@@ -110,6 +110,7 @@ URL 形式：
 - `setupUI` 挂载 SparkAdvisor tab；用户打开页面时，SparkAdvisor 使用自己的 `EventLogAnalyzer` 重新解析 event log。
 - 队列模式使用 `sparkadvisor-monitor` 生成 `QueueAnalysisResult`，并启用轻量 `TaskInterval` 收集以分析资源争用。
 - 队列分析在受限后台线程池中异步单飞执行，避免 10 GB 级 `.inprogress` 日志阻塞 SHS UI 请求线程。
+- 队列页面会按 rolling event-log part 明细生成 snapshot key，并把 snapshot key + `top` + `samplePerStratum` + `bucket` 作为缓存/checkpoint key；默认目录为 `${java.io.tmpdir}/sparkadvisor-queue-checkpoints`，可用 `SPARKADVISOR_QUEUE_CHECKPOINT_DIR` 覆盖。当前 checkpoint 是结果 fast path，不是 byte-offset 增量回放；报告会以 `incremental=false` 和 `degradedReason` 保持诚实标注。
 - 插件内部异常会被捕获并记录，不应影响 Spark History Server 其它页面。
 
 ## 3. 方式二：后台命令使用
@@ -238,6 +239,7 @@ bin/sparkadvisor queue-report \
 | `--format html|json` | 输出格式，默认 `html`。 |
 | `--out` | 输出文件路径，默认 `queue-report.<format>`。 |
 | `--top` | 深度分析的最慢 SQL 数量，默认 50；其它 SQL 仍进入吞吐、延迟和趋势聚合。 |
+| `--sample-per-stratum` | top-N 之外每类补充深度分析样本数，覆盖 spill/fetch/GC/skew/template 等分层，默认 5。 |
 | `--bucket` | 时间分桶粒度，例如 `15m`、`1h`、`3600s`，默认 `1h`。 |
 | `--hadoop-conf-dir` | 覆盖环境变量中的 Hadoop 配置目录。 |
 | `--auth-to-local` | 覆盖 Hadoop `hadoop.security.auth_to_local` 规则；也可用环境变量 `SPARKADVISOR_AUTH_TO_LOCAL`。 |

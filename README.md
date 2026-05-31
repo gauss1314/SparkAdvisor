@@ -127,11 +127,14 @@ bin/sparkadvisor queue-report \
   --format html \
   --out ./queue-report_zh.html \
   --top 50 \
+  --sample-per-stratum 5 \
   --bucket 1h \
   --advise llm
 ```
 
-`queue-report` 用于分析一个完整长驻查询队列应用的一整轮 event log。`--top` 控制深度分析的最慢 SQL 数量；其它 SQL 仍进入吞吐、延迟和趋势聚合。`--bucket` 支持 `15m`、`1h`、`3600s` 等形式。队列级 `--advise llm` 同样默认使用 MiniMax-M2.5，并只发送结构化 `QueueAnalysisResult`。报告语言同样支持 `--lang auto|zh|en`。
+`queue-report` 用于分析一个完整长驻查询队列应用的一整轮 event log。`--top` 控制深度分析的最慢 SQL 数量；`--sample-per-stratum` 控制 spill/fetch/GC/skew/template 等分层补样数量；其它 SQL 仍进入吞吐、延迟和趋势聚合。`--bucket` 支持 `15m`、`1h`、`3600s` 等形式。队列级 `--advise llm` 同样默认使用 MiniMax-M2.5，并只发送结构化 `QueueAnalysisResult`。报告语言同样支持 `--lang auto|zh|en`。
+
+History Server 队列页也支持 `top`、`samplePerStratum`、`bucket` 参数，并把 rolling event-log snapshot key 与这些分析参数一起作为缓存/checkpoint key，避免不同抽样或分桶配置复用同一份报告。checkpoint 目录默认 `${java.io.tmpdir}/sparkadvisor-queue-checkpoints`，可用 `SPARKADVISOR_QUEUE_CHECKPOINT_DIR` 覆盖。当前 checkpoint 是结果 fast path，不是 byte-offset 增量回放；报告会以 `incremental=false` 和 `degradedReason` 保持诚实标注。
 
 ## History Server 插件
 

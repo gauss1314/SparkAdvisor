@@ -19,6 +19,7 @@ import java.util.List;
 public final class QueueAnalyzer {
 
     public static final int DEFAULT_TOP_N = 50;
+    public static final int DEFAULT_SAMPLE_PER_STRATUM = 5;
     public static final long DEFAULT_BUCKET_MS = 60L * 60L * 1000L;
 
     private final EventLogAnalyzer eventLogAnalyzer;
@@ -36,14 +37,34 @@ public final class QueueAnalyzer {
     }
 
     public QueueAnalysisResult analyze(String path, int topN, long bucketMs) throws IOException {
+        return analyze(path, topN, DEFAULT_SAMPLE_PER_STRATUM, bucketMs);
+    }
+
+    public QueueAnalysisResult analyze(String path, int topN, int samplePerStratum, long bucketMs) throws IOException {
+        return analyze(path, topN, samplePerStratum, bucketMs, QueueAnalysisContext.defaults());
+    }
+
+    public QueueAnalysisResult analyze(String path, int topN, int samplePerStratum, long bucketMs,
+                                       QueueAnalysisContext context) throws IOException {
         ApplicationModel app = eventLogAnalyzer.analyze(path, true);
-        return analyze(app, path, topN, bucketMs);
+        return analyze(app, path, topN, samplePerStratum, bucketMs, context);
     }
 
     public QueueAnalysisResult analyze(ApplicationModel app, String sourcePath, int topN, long bucketMs) {
+        return analyze(app, sourcePath, topN, DEFAULT_SAMPLE_PER_STRATUM, bucketMs);
+    }
+
+    public QueueAnalysisResult analyze(ApplicationModel app, String sourcePath, int topN,
+                                       int samplePerStratum, long bucketMs) {
+        return analyze(app, sourcePath, topN, samplePerStratum, bucketMs, QueueAnalysisContext.defaults());
+    }
+
+    public QueueAnalysisResult analyze(ApplicationModel app, String sourcePath, int topN,
+                                       int samplePerStratum, long bucketMs, QueueAnalysisContext context) {
         int normalizedTopN = Math.max(1, topN);
+        int normalizedSamplePerStratum = Math.max(0, samplePerStratum);
         long normalizedBucketMs = Math.max(60_000L, bucketMs);
-        List<QuerySample> samples = new QuerySeriesCollector(app, normalizedTopN).collect(app);
+        List<QuerySample> samples = new QuerySeriesCollector(app, normalizedTopN, normalizedSamplePerStratum).collect(app);
         long windowStart = samples.stream()
                 .mapToLong(s -> s.startTime() > 0L ? s.startTime() : app.startTime())
                 .filter(v -> v > 0L)
@@ -60,6 +81,6 @@ public final class QueueAnalyzer {
         ContentionTimeline contention = ContentionTimeline.from(
                 app.taskIntervals(), samples, cores, normalizedBucketMs, windowStart, windowEnd);
         return new QueueAggregator().aggregate(
-                app, samples, contention, sourcePath, normalizedTopN, normalizedBucketMs);
+                app, samples, contention, sourcePath, normalizedTopN, normalizedBucketMs, context);
     }
 }

@@ -44,14 +44,14 @@ public final class OverParallelismRule implements Rule {
             List<Recommendation> recs = new ArrayList<>();
             if (ctx.aqe().aqeEnabled() && ctx.aqe().coalesceEnabled()) {
                 recs.add(Recommendation.conf(
-                        "raise spark.sql.adaptive.advisoryPartitionSizeInBytes",
-                        "Larger target partitions mean fewer, bigger tasks under AQE coalescing.",
-                        "Reduces scheduling overhead."));
+                        "raise spark.sql.adaptive.advisoryPartitionSizeInBytes; on busy shared queues also consider spark.sql.adaptive.coalescePartitions.parallelismFirst=false",
+                        "Larger target partitions mean fewer, bigger tasks under AQE coalescing; parallelismFirst=false lets the advisory size matter more on busy clusters.",
+                        "Reduces scheduling overhead but may lower parallelism."));
             } else {
                 recs.add(Recommendation.conf(
-                        "reduce spark.sql.shuffle.partitions, or coalesce() the result",
+                        "reduce spark.sql.shuffle.partitions for upstream shuffle stages; use coalesce()/COALESCE only for terminal output control",
                         "Fewer partitions means fewer, larger tasks with less fixed overhead.",
-                        "Reduces scheduling overhead."));
+                        "coalesce() cannot recover scheduling overhead already paid upstream."));
             }
             findings.add(new Finding(id(), "parallelism", Severity.INFO, st.stageId(),
                     explanation, evidence, recs));

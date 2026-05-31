@@ -47,7 +47,7 @@ public final class ShuffleFetchWaitRule implements Rule {
                     "Lower shuffle volume reduces remote fetch pressure and reducer wait time.",
                     "Best when a large fraction of task time is fetch wait."));
             recs.add(Recommendation.conf(
-                    "check shuffle service, network, and executor locality; increase reducer parallelism if reducers are too large",
+                    "check shuffle service, network, executor locality, and reducer fetch tuning (spark.reducer.maxSizeInFlight, maxReqsInFlight, maxBlocksInFlightPerAddress)",
                     "High fetch wait usually points to remote shuffle pressure rather than CPU work.",
                     "Operational fix; validate with network and shuffle-service metrics."));
             findings.add(new Finding(id(), "shuffle", Severity.WARN, st.stageId(), explanation, evidence, recs));

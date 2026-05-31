@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -67,13 +68,18 @@ class QueueAnalyzerTest {
                 java.util.Arrays.asList(hog, skewed),
                 java.util.Arrays.asList(job1, job2),
                 java.util.Arrays.asList(hogStage, skewStage),
-                new java.util.ArrayList<>(),
-                java.util.Arrays.asList(
-                        new TaskInterval(1, 1, 0, 1L, "1", 1L, 60_000L),
-                        new TaskInterval(2, 1, 0, 1L, "2", 1L, 60_000L),
-                        new TaskInterval(3, 1, 0, 1L, "3", 1L, 60_000L),
-                        new TaskInterval(4, 2, 0, 2L, "4", 10_000L, 60_000L),
-                        new TaskInterval(5, 2, 0, 2L, "4", 10_000L, 10_500L)));
+	                new java.util.ArrayList<>(),
+	                java.util.Arrays.asList(
+	                        new TaskInterval(1, 1, 0, 1L, "1", 1L, 60_000L,
+	                                59_999L, 45_000_000_000L, 100L, 0L, false, false),
+	                        new TaskInterval(2, 1, 0, 1L, "2", 1L, 60_000L,
+	                                59_999L, 44_000_000_000L, 100L, 0L, false, false),
+	                        new TaskInterval(3, 1, 0, 1L, "3", 1L, 60_000L,
+	                                59_999L, 43_000_000_000L, 100L, 0L, false, false),
+	                        new TaskInterval(4, 2, 0, 2L, "4", 10_000L, 60_000L,
+	                                50_000L, 35_000_000_000L, 100L, 0L, false, false),
+	                        new TaskInterval(5, 2, 0, 2L, "4", 10_000L, 10_500L,
+	                                500L, 350_000_000L, 0L, 0L, false, false)));
     }
 
     @Test
@@ -84,13 +90,15 @@ class QueueAnalyzerTest {
         assertEquals(2, result.summary().completedQueries());
         assertEquals(4, result.summary().fixedExecutorCores());
         assertTrue(result.utilization().avgUtilization() > 0.80, "pool should be busy");
+        assertTrue(result.resources().avgCpuEfficiency() > 0.50, "CPU efficiency should come from task intervals");
         assertTrue(result.contention().contentionLimitedPct() > 0.0, "one query should be contention-limited");
         assertTrue(result.topSlowQueries().stream().anyMatch(q -> q.executionId() == 2L
                 && q.contentionLimited()));
         assertTrue(result.bottlenecks().stream().anyMatch(b -> b.ruleId().equals("R1_DATA_SKEW")));
         assertNotNull(result.resources());
+        assertTrue(result.meta().deepCoveragePct() > 0.0);
         assertTrue(result.globalRecommendations().stream()
-                .anyMatch(r -> r.queueRuleId().equals("Q2_COMMON_SKEW")));
+                .anyMatch(r -> r.queueRuleId().equals("Q2_COMMON_LONG_TAIL_SKEW")));
     }
 
     @Test
@@ -107,7 +115,43 @@ class QueueAnalyzerTest {
         assertTrue(json.contains("\"summary\""));
         assertTrue(json.contains("\"resources\""));
         assertTrue(json.contains("\"bottlenecks\""));
+        assertTrue(json.contains("\"deepCoveragePct\""));
         assertNotNull(result.meta().assumptions());
+    }
+
+    @Test
+    void deepAnalysisAddsRepresentativeStrataBeyondTopN() {
+        var result = new QueueAnalyzer().analyze(queueApp(), "synthetic", 1, 5, 10_000L);
+
+        assertTrue(result.sampledQueries().stream().anyMatch(q -> q.executionId() == 2L),
+                "skew-heavy query should be selected by stratum even when it is not top-1");
+        assertTrue(result.meta().deepAnalyzedQueries() > 1);
+    }
+
+    @Test
+    void queueMetaUsesCallerSnapshotAndDegradedReason() throws Exception {
+        var result = new QueueAnalyzer().analyze(queueApp(), "synthetic", 2, 5, 10_000L,
+                QueueAnalysisContext.fullSnapshot("snapshot-123", "full replay fallback"));
+        String html = new QueueHtmlWriter().render(result);
+
+        assertEquals("snapshot-123", result.meta().snapshotKey());
+        assertFalse(result.meta().incremental());
+        assertEquals("full replay fallback", result.meta().degradedReason());
+        assertTrue(html.contains("full replay fallback"));
+    }
+
+    @Test
+    void queueJsonRedactsSensitiveMetadata() throws Exception {
+        var result = new QueueAnalyzer().analyze(queueApp(),
+                "hdfs://namenode.example.com/user/alice/eventLog?password=secret", 2, 5, 10_000L,
+                QueueAnalysisContext.fullSnapshot(
+                        "hdfs://namenode.example.com/user/alice/eventLog|token=abc",
+                        "checkpoint used token=abc"));
+        String json = new QueueJsonWriter().toJson(result);
+
+        assertTrue(json.contains("hdfs://<redacted-authority>"));
+        assertTrue(json.contains("password=<redacted>"));
+        assertTrue(json.contains("token=<redacted>"));
     }
 
     @Test

@@ -5,6 +5,8 @@ import io.sparkadvisor.core.model.ApplicationModel;
 import io.sparkadvisor.core.model.ExecutorEvent;
 import io.sparkadvisor.core.model.TaskInterval;
 import io.sparkadvisor.core.util.Java8Collections;
+import io.sparkadvisor.core.util.Strings;
+import io.sparkadvisor.monitor.QueueAnalysisContext;
 import io.sparkadvisor.monitor.collect.QuerySample;
 import io.sparkadvisor.monitor.contention.ContentionTimeline;
 import io.sparkadvisor.monitor.rule.QueueRuleEngine;
@@ -31,6 +33,17 @@ public final class QueueAggregator {
                                          String sourcePath,
                                          int topN,
                                          long bucketMs) {
+        return aggregate(app, samples, contention, sourcePath, topN, bucketMs,
+                QueueAnalysisContext.defaults());
+    }
+
+    public QueueAnalysisResult aggregate(ApplicationModel app,
+                                         List<QuerySample> samples,
+                                         ContentionTimeline contention,
+                                         String sourcePath,
+                                         int topN,
+                                         long bucketMs,
+                                         QueueAnalysisContext context) {
         List<QuerySample> completed = samples.stream()
                 .filter(q -> !q.running() && q.durationMs() > 0L)
                 .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
@@ -45,12 +58,13 @@ public final class QueueAggregator {
                 timeline(completed, contention, windowStart, windowEnd, bucketMs),
                 bottlenecks(samples),
                 utilization(contention),
-                resources(completed),
+                resources(completed, contention),
                 contentionReport(completed, contention),
                 topSlowQueries(completed, contention, topN),
+                sampledQueries(completed, contention),
                 Java8Collections.<QueueAnalysisResult.QueueRecommendation>listOf(),
                 null,
-                meta(app, sourcePath, topN));
+                meta(app, sourcePath, topN, samples, context));
         return base.withRecommendations(ruleEngine.recommend(base));
     }
 
@@ -92,14 +106,17 @@ public final class QueueAggregator {
         }
 
         Map<Long, Double> utilByBucket = new HashMap<>();
+        Map<Long, ContentionTimeline.BucketUtilization> resourceByBucket = new HashMap<>();
         for (ContentionTimeline.BucketUtilization u : contention.bucketUtilization()) {
             utilByBucket.put(u.bucketStart(), u.avgUtilization());
+            resourceByBucket.put(u.bucketStart(), u);
         }
 
         List<QueueAnalysisResult.HourBucketStat> result = new ArrayList<>();
         for (Map.Entry<Long, List<Long>> entry : durationsByBucket.entrySet()) {
             long bucketStart = entry.getKey();
             List<Long> values = entry.getValue();
+            ContentionTimeline.BucketUtilization resource = resourceByBucket.get(bucketStart);
             result.add(new QueueAnalysisResult.HourBucketStat(
                     bucketStart,
                     bucketStart + bucket,
@@ -107,7 +124,12 @@ public final class QueueAggregator {
                     quantile(values, 0.50),
                     quantile(values, 0.95),
                     quantile(values, 0.99),
-                    utilByBucket.getOrDefault(bucketStart, 0.0)));
+                    utilByBucket.getOrDefault(bucketStart, 0.0),
+                    resource == null ? 0.0 : resource.cpuEfficiency(),
+                    resource == null ? 0.0 : resource.fetchWaitRatio(),
+                    resource == null ? 0.0 : resource.gcRatio(),
+                    resource == null ? 0.0 : resource.failedAttemptRatio(),
+                    resource == null ? 0.0 : resource.speculativeAttemptRatio()));
         }
         return Java8Collections.listCopy(result);
     }
@@ -115,6 +137,7 @@ public final class QueueAggregator {
     private List<QueueAnalysisResult.BottleneckCluster> bottlenecks(List<QuerySample> samples) {
         List<QuerySample> analyzed = samples.stream().filter(QuerySample::deepAnalyzed).collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
         int denominator = Math.max(1, analyzed.size());
+        double coverage = samples.isEmpty() ? 0.0 : (double) analyzed.size() / (double) samples.size();
         Map<String, RuleCount> counts = new HashMap<>();
         for (QuerySample sample : analyzed) {
             for (Finding finding : sample.findings()) {
@@ -127,7 +150,8 @@ public final class QueueAggregator {
                 .sorted(Comparator.comparingInt((RuleCount c) -> c.affected).reversed()
                         .thenComparing(c -> c.ruleId))
                 .map(c -> new QueueAnalysisResult.BottleneckCluster(
-                        c.ruleId, c.category, c.affected, (double) c.affected / denominator))
+                        c.ruleId, c.category, c.affected, (double) c.affected / denominator,
+                        "DEEP_SAMPLE", coverage))
                 .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new)));
     }
 
@@ -145,7 +169,8 @@ public final class QueueAggregator {
         return new QueueAnalysisResult.UtilizationSeries(Java8Collections.listCopy(points), avg, peak);
     }
 
-    private QueueAnalysisResult.ResourceMetrics resources(List<QuerySample> completed) {
+    private QueueAnalysisResult.ResourceMetrics resources(List<QuerySample> completed,
+                                                          ContentionTimeline contention) {
         long totalSpill = completed.stream().mapToLong(QuerySample::spillBytes).sum();
         List<Long> gcBasisPoints = completed.stream()
                 .map(q -> Math.round(q.maxGcRatio() * 10_000.0))
@@ -158,7 +183,24 @@ public final class QueueAggregator {
         double p95Gc = quantile(gcBasisPoints, 0.95) / 10_000.0;
         double maxGc = gcBasisPoints.isEmpty() ? 0.0
                 : gcBasisPoints.get(gcBasisPoints.size() - 1) / 10_000.0;
-        return new QueueAnalysisResult.ResourceMetrics(totalSpill, avgGc, p95Gc, maxGc);
+        double avgSlot = contention.bucketUtilization().stream()
+                .mapToDouble(ContentionTimeline.BucketUtilization::avgUtilization)
+                .average().orElse(0.0);
+        double avgCpu = contention.bucketUtilization().stream()
+                .mapToDouble(ContentionTimeline.BucketUtilization::cpuEfficiency)
+                .average().orElse(0.0);
+        double avgFetch = contention.bucketUtilization().stream()
+                .mapToDouble(ContentionTimeline.BucketUtilization::fetchWaitRatio)
+                .average().orElse(0.0);
+        double avgBucketGc = contention.bucketUtilization().stream()
+                .mapToDouble(ContentionTimeline.BucketUtilization::gcRatio)
+                .average().orElse(0.0);
+        double failedAttemptRatio = completed.stream().mapToInt(QuerySample::failedTaskAttempts).sum()
+                / Math.max(1.0, completed.stream().mapToInt(q -> q.failedTaskAttempts() + q.extraTaskAttempts() + Math.max(1, q.stageCount())).sum());
+        double speculativeAttemptRatio = completed.stream().mapToInt(QuerySample::extraTaskAttempts).sum()
+                / Math.max(1.0, completed.stream().mapToInt(q -> q.failedTaskAttempts() + q.extraTaskAttempts() + Math.max(1, q.stageCount())).sum());
+        return new QueueAnalysisResult.ResourceMetrics(totalSpill, avgGc, p95Gc, maxGc,
+                avgSlot, avgCpu, avgFetch, avgBucketGc, failedAttemptRatio, speculativeAttemptRatio);
     }
 
     private QueueAnalysisResult.ContentionReport contentionReport(List<QuerySample> completed,
@@ -168,7 +210,13 @@ public final class QueueAggregator {
                         .getOrDefault(q.executionId(), emptyContention(q.executionId()))
                         .contentionLimited())
                 .count();
+        long inefficient = completed.stream()
+                .filter(q -> contention.queryContention()
+                        .getOrDefault(q.executionId(), emptyContention(q.executionId()))
+                        .inefficientBusy())
+                .count();
         double pct = completed.isEmpty() ? 0.0 : (double) limited / (double) completed.size();
+        double inefficientPct = completed.isEmpty() ? 0.0 : (double) inefficient / (double) completed.size();
         List<QueueAnalysisResult.ContentionReport.Window> hotspots = contention.hotspots().stream()
                 .map(w -> new QueueAnalysisResult.ContentionReport.Window(
                         w.startTime(), w.endTime(), w.avgUtilization()))
@@ -180,7 +228,12 @@ public final class QueueAggregator {
                 .limit(10)
                 .map(q -> slowRef(q, contention))
                 .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
-        return new QueueAnalysisResult.ContentionReport(pct, Java8Collections.listCopy(hotspots),
+        List<QueueAnalysisResult.ContentionReport.Window> starvation = contention.starvationWindows().stream()
+                .map(w -> new QueueAnalysisResult.ContentionReport.Window(
+                        w.startTime(), w.endTime(), w.avgUtilization()))
+                .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
+        return new QueueAnalysisResult.ContentionReport(pct, inefficientPct, Java8Collections.listCopy(hotspots),
+                Java8Collections.listCopy(starvation),
                 Java8Collections.listCopy(hogs));
     }
 
@@ -194,18 +247,29 @@ public final class QueueAggregator {
                 .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new)));
     }
 
+    private List<QueueAnalysisResult.SlowQueryRef> sampledQueries(List<QuerySample> completed,
+                                                                  ContentionTimeline contention) {
+        return Java8Collections.listCopy(completed.stream()
+                .filter(QuerySample::deepAnalyzed)
+                .sorted(Comparator.comparingLong(QuerySample::durationMs).reversed())
+                .map(q -> slowRef(q, contention))
+                .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new)));
+    }
+
     private QueueAnalysisResult.SlowQueryRef slowRef(QuerySample q, ContentionTimeline contention) {
         ContentionTimeline.QueryContention c = contention.queryContention()
                 .getOrDefault(q.executionId(), emptyContention(q.executionId()));
         return new QueueAnalysisResult.SlowQueryRef(
                 q.statementId(),
+                q.templateHash(),
                 q.executionId(),
                 q.startTime(),
                 q.endTime(),
                 q.durationMs(),
                 dominantBottleneck(q),
                 c.contentionLimited(),
-                c.ownCoreMs());
+                c.ownCoreMs(),
+                q.deepAnalyzed());
     }
 
     private String dominantBottleneck(QuerySample q) {
@@ -215,16 +279,40 @@ public final class QueueAggregator {
         return q.findings().get(0).ruleId();
     }
 
-    private QueueAnalysisResult.Meta meta(ApplicationModel app, String sourcePath, int topN) {
+    private QueueAnalysisResult.Meta meta(ApplicationModel app, String sourcePath, int topN,
+                                          List<QuerySample> samples, QueueAnalysisContext context) {
+        int deep = (int) samples.stream().filter(QuerySample::deepAnalyzed).count();
+        double coverage = samples.isEmpty() ? 0.0 : (double) deep / (double) samples.size();
+        QueueAnalysisContext safeContext = context == null ? QueueAnalysisContext.defaults() : context;
+        String snapshotKey = safeContext.hasSnapshotKey()
+                ? safeContext.snapshotKey()
+                : snapshotKey(app, sourcePath);
+        String degradedReason = safeContext.degradedReason();
+        if (Strings.isBlank(degradedReason) && !safeContext.incremental() && app.incomplete()) {
+            degradedReason = "Full snapshot replay fallback was used for an incomplete event log.";
+        }
         return new QueueAnalysisResult.Meta(
                 AnalysisResultBuilder.VERSION,
                 Instant.now().toString(),
                 app.incomplete(),
                 app.incomplete(),
+                safeContext.incremental(),
                 sourcePath,
+                snapshotKey,
                 topN,
+                samples.size(),
+                deep,
+                coverage,
+                "topN+spill/fetch/GC/skew/template strata",
+                "DEFAULT_REDACTION",
+                degradedReason,
                 "Contention is inferred from task occupancy under a FIFO/single-pool assumption; "
                         + "event logs do not directly record queue wait time.");
+    }
+
+    private static String snapshotKey(ApplicationModel app, String sourcePath) {
+        String source = sourcePath == null ? "" : sourcePath;
+        return app.appId() + ":" + Integer.toHexString(source.hashCode()) + ":" + app.endTime() + ":" + app.incomplete();
     }
 
     private static long windowStart(ApplicationModel app, List<QuerySample> samples) {

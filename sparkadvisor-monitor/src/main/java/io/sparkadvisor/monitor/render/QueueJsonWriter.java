@@ -5,6 +5,7 @@ import com.fasterxml.jackson.annotation.PropertyAccessor;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import io.sparkadvisor.monitor.aggregate.QueueAnalysisResult;
+import io.sparkadvisor.monitor.security.QueueRedactor;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -22,7 +23,7 @@ public final class QueueJsonWriter {
                     .setVisibility(PropertyAccessor.FIELD, JsonAutoDetect.Visibility.ANY);
 
     public String toJson(QueueAnalysisResult result) throws IOException {
-        return mapper.writeValueAsString(result);
+        return mapper.writeValueAsString(QueueRedactor.redact(result));
     }
 
     public void write(QueueAnalysisResult result, Path out) throws IOException {

@@ -82,6 +82,23 @@ public final class QueueHtmlWriter {
                             "Event log 不完整或可能被截断；队列级结论置信度会降低。"))
                     .append("</div>");
         }
+        if (!r.meta().incremental() || !Strings.isBlank(r.meta().degradedReason())
+                || r.meta().deepCoveragePct() < 0.50) {
+            h.append("<div class=\"banner warn\">")
+                    .append(t(zh,
+                            "Caveat: queue evidence is a snapshot; incremental replay may be unavailable and deep-analysis coverage may be partial.",
+                            "注意：队列证据来自快照；增量回放可能不可用，深度分析覆盖率可能不足。"))
+                    .append(" ")
+                    .append(t(zh, "Deep coverage", "深度覆盖率")).append(": ")
+                    .append(pct(r.meta().deepCoveragePct()));
+            if (!Strings.isBlank(r.meta().degradedReason())) {
+                h.append("<div class=\"muted\">")
+                        .append(t(zh, "Reason", "原因")).append(": ")
+                        .append(esc(r.meta().degradedReason()))
+                        .append("</div>");
+            }
+            h.append("</div>");
+        }
         overview(h, r, zh);
         timeline(h, r, zh);
         bottlenecks(h, r, zh);
@@ -151,10 +168,16 @@ public final class QueueHtmlWriter {
                 r.utilization().peakUtilization() > 0.95);
         card(h, t(zh, "P95 max GC", "P95 最大 GC"), pct(r.resources().p95MaxGcRatio()),
                 r.resources().p95MaxGcRatio() > 0.10);
+        card(h, t(zh, "CPU efficiency", "CPU 效率"), pct(r.resources().avgCpuEfficiency()),
+                r.resources().avgSlotOccupancy() > 0.85 && r.resources().avgCpuEfficiency() < 0.35);
+        card(h, t(zh, "Fetch wait", "Fetch 等待"), pct(r.resources().avgFetchWaitRatio()),
+                r.resources().avgFetchWaitRatio() > 0.20);
         card(h, t(zh, "Total spill", "总 Spill"), bytes(r.resources().totalSpillBytes()),
                 r.resources().totalSpillBytes() > 0);
         card(h, t(zh, "Contention-limited", "争用受限占比"), pct(r.contention().contentionLimitedPct()),
                 r.contention().contentionLimitedPct() > 0.25);
+        card(h, t(zh, "Deep coverage", "深度覆盖率"), pct(r.meta().deepCoveragePct()),
+                r.meta().deepCoveragePct() < 0.50);
         card(h, t(zh, "Global recommendations", "全局建议数"),
                 String.valueOf(r.globalRecommendations().size()), false);
         h.append("</div></section>");
@@ -171,7 +194,10 @@ public final class QueueHtmlWriter {
         th(h, "P50");
         th(h, "P95");
         th(h, "P99");
-        th(h, t(zh, "Avg util", "平均利用率"));
+        th(h, t(zh, "Slot", "Slot"));
+        th(h, "CPU");
+        th(h, "Fetch");
+        th(h, "GC");
         h.append("</tr></thead><tbody>");
         for (QueueAnalysisResult.HourBucketStat b : r.timeline()) {
             h.append("<tr>");
@@ -181,6 +207,9 @@ public final class QueueHtmlWriter {
             td(h, duration(b.p95Ms()));
             td(h, duration(b.p99Ms()));
             td(h, pct(b.avgUtilization()));
+            td(h, pct(b.cpuEfficiency()));
+            td(h, pct(b.fetchWaitRatio()));
+            td(h, pct(b.gcRatio()));
             h.append("</tr>");
         }
         h.append("</tbody></table></section>");
@@ -202,6 +231,8 @@ public final class QueueHtmlWriter {
         th(h, t(zh, "Category", "类别"));
         th(h, t(zh, "Affected", "影响查询数"));
         th(h, t(zh, "Share", "占比"));
+        th(h, t(zh, "Scope", "范围"));
+        th(h, t(zh, "Coverage", "覆盖率"));
         h.append("</tr></thead><tbody>");
         for (QueueAnalysisResult.BottleneckCluster b : r.bottlenecks()) {
             h.append("<tr>");
@@ -209,8 +240,30 @@ public final class QueueHtmlWriter {
             td(h, esc(b.category()));
             td(h, String.valueOf(b.affectedQueries()));
             td(h, shareBar(b.affectedPct()));
+            td(h, esc(b.scope()));
+            td(h, pct(b.sampleCoveragePct()));
             h.append("</tr>");
         }
+        if (!r.contention().starvationWindows().isEmpty()) {
+            h.append("<h3>").append(t(zh, "Starvation windows", "饥饿窗口"))
+                    .append("</h3><table><thead><tr>");
+            th(h, t(zh, "Start", "开始"));
+            th(h, t(zh, "End", "结束"));
+            th(h, t(zh, "Avg util", "平均利用率"));
+            h.append("</tr></thead><tbody>");
+            for (QueueAnalysisResult.ContentionReport.Window w : r.contention().starvationWindows()) {
+                h.append("<tr>");
+                td(h, time(w.startTime()));
+                td(h, time(w.endTime()));
+                td(h, pct(w.avgUtilization()));
+                h.append("</tr>");
+            }
+            h.append("</tbody></table>");
+        }
+        h.append("<p class=\"muted\">")
+                .append(t(zh, "Inefficient-busy queries", "低效占用查询占比"))
+                .append(": ").append(pct(r.contention().inefficientBusyPct()))
+                .append("</p>");
         h.append("</tbody></table></section>");
     }
 
@@ -247,6 +300,11 @@ public final class QueueHtmlWriter {
         h.append("<section><h2>").append(t(zh, "Top slow queries", "最慢查询 Top-N"))
                 .append("</h2>");
         slowQueryTable(h, r.topSlowQueries(), zh);
+        if (!r.sampledQueries().isEmpty()) {
+            h.append("<h3>").append(t(zh, "Deep-analysis sample", "深度分析样本"))
+                    .append("</h3>");
+            slowQueryTable(h, r.sampledQueries(), zh);
+        }
         h.append("</section>");
     }
 
@@ -264,6 +322,8 @@ public final class QueueHtmlWriter {
         th(h, t(zh, "Duration", "耗时"));
         th(h, t(zh, "Dominant bottleneck", "主要瓶颈"));
         th(h, t(zh, "Contention", "争用"));
+        th(h, t(zh, "Deep", "深度"));
+        th(h, "Template");
         th(h, "Own core-ms");
         h.append("</tr></thead><tbody>");
         for (QueueAnalysisResult.SlowQueryRef q : rows) {
@@ -273,6 +333,8 @@ public final class QueueHtmlWriter {
             td(h, duration(q.durationMs()));
             td(h, esc(q.dominantBottleneck()));
             td(h, q.contentionLimited() ? t(zh, "yes", "是") : t(zh, "no", "否"));
+            td(h, q.deepAnalyzed() ? t(zh, "yes", "是") : t(zh, "no", "否"));
+            td(h, esc(q.templateHash()));
             td(h, String.valueOf(q.ownCoreMs()));
             h.append("</tr>");
         }
@@ -300,6 +362,8 @@ public final class QueueHtmlWriter {
                     .append(": ").append(esc(ReportText.localizeText(rec.evidence(), language)))
                     .append("<br>").append(t(zh, "Coverage", "预期覆盖"))
                     .append(": ").append(esc(ReportText.localizeText(rec.expectedCoverage(), language)))
+                    .append(Strings.isBlank(rec.caveats()) ? "" : "<br>" + t(zh, "Caveats", "限制") + ": "
+                            + esc(ReportText.localizeText(rec.caveats(), language)))
                     .append("</p></div>");
         }
         h.append("</section>");

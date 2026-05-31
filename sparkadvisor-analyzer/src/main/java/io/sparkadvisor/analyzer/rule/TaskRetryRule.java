@@ -12,8 +12,9 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * R10 — Task retries / failed attempts. Retries inflate wall clock and reduce confidence in
- * fine-grained tuning conclusions until the underlying instability is understood.
+ * R10 — Task attempts. Runtime ID remains R10_TASK_RETRY for JSON compatibility. Failed
+ * attempts and extra/speculative attempts are separate signals: failures usually point to
+ * instability, while extra attempts may be normal speculation when spark.speculation is enabled.
  */
 public final class TaskRetryRule implements Rule {
     @Override
@@ -36,14 +37,24 @@ public final class TaskRetryRule implements Rule {
             evidence.put("failedTaskAttempts", String.valueOf(st.failedTaskAttempts()));
             evidence.put("extraTaskAttempts", String.valueOf(st.extraTaskAttempts()));
             evidence.put("extraTaskAttemptRatio", String.format(java.util.Locale.ROOT, "%.2f", extraRatio));
+            evidence.put("failedAndSpeculativeAreSeparated", "true");
+            evidence.put("extraAttemptsMayBeSpeculation", String.valueOf(extraTrips && !failedTrips));
             String explanation = String.format(java.util.Locale.ROOT,
-                    "Stage %d has %d failed task attempt(s) and %d extra attempt(s); retries can inflate wall clock and obscure the root cause.",
+                    "Stage %d has %d failed task attempt(s) and %d extra/speculative attempt(s); "
+                            + "failures and speculation both add wall-clock noise but require different follow-up.",
                     st.stageId(), st.failedTaskAttempts(), st.extraTaskAttempts());
             List<Recommendation> recs = new ArrayList<Recommendation>();
-            recs.add(Recommendation.conf(
-                    "inspect failed task logs and executor/container health for this stage",
-                    "Retries add wall-clock noise and can hide the real bottleneck behind failed attempts.",
-                    "Required before trusting fine-grained tuning recommendations."));
+            if (failedTrips) {
+                recs.add(Recommendation.conf(
+                        "inspect failed task logs, TaskEndReason, and executor/container health for this stage",
+                        "Failed retries add wall-clock noise and can hide the real bottleneck behind instability.",
+                        "Required before trusting fine-grained tuning recommendations."));
+            } else {
+                recs.add(Recommendation.conf(
+                        "check spark.speculation and slow-task evidence before treating extra attempts as failures",
+                        "Speculative duplicate attempts can be healthy compensation for stragglers, not necessarily instability.",
+                        "Use TaskEndReason and speculation settings to classify the attempts."));
+            }
             recs.add(Recommendation.conf(
                     "reduce per-task input/shuffle size if failures are memory or timeout related",
                     "Smaller tasks reduce memory pressure and timeout blast radius.",

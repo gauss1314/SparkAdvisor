@@ -192,7 +192,8 @@ public final class SparkEventCollector extends SparkListener {
         StageBuilder b = stages.computeIfAbsent(e.stageId(), id -> new StageBuilder());
         b.taskEndCount++;
         String reason = e.reason() == null ? "" : e.reason().getClass().getName();
-        if (!reason.contains("Success")) {
+        boolean failedAttempt = !reason.contains("Success");
+        if (failedAttempt) {
             b.failedTaskEndCount++;
         }
         // Track earliest task launch for scheduling-delay computation.
@@ -200,9 +201,14 @@ public final class SparkEventCollector extends SparkListener {
         if (b.firstTaskLaunch == 0L || launch < b.firstTaskLaunch) {
             b.firstTaskLaunch = launch;
         }
+        TaskMetrics m = e.taskMetrics();
         if (collectTaskIntervals) {
             long finish = e.taskInfo().finishTime(); // VERIFY@3.5.1
             if (finish > 0L && launch > 0L && finish >= launch) {
+                long executorRunTimeMs = m == null ? 0L : m.executorRunTime(); // VERIFY@3.5.1
+                long executorCpuTimeNs = m == null ? 0L : m.executorCpuTime(); // VERIFY@3.5.1
+                long jvmGcTimeMs = m == null ? 0L : m.jvmGCTime(); // VERIFY@3.5.1
+                long fetchWaitMs = m == null ? 0L : m.shuffleReadMetrics().fetchWaitTime(); // VERIFY@3.5.1
                 taskIntervals.add(new TaskInterval(
                         e.taskInfo().taskId(),
                         e.stageId(),
@@ -210,10 +216,15 @@ public final class SparkEventCollector extends SparkListener {
                         stageSqlExecutions.get(e.stageId()),
                         e.taskInfo().executorId(),
                         launch,
-                        finish));
+                        finish,
+                        executorRunTimeMs,
+                        executorCpuTimeNs,
+                        jvmGcTimeMs,
+                        fetchWaitMs,
+                        failedAttempt,
+                        e.taskInfo().speculative())); // VERIFY@3.5.1
             }
         }
-        TaskMetrics m = e.taskMetrics();
         if (m == null) {
             return; // failed/speculative task without metrics
         }

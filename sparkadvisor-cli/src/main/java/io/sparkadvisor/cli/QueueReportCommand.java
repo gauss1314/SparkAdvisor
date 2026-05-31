@@ -42,6 +42,10 @@ public final class QueueReportCommand implements Callable<Integer> {
             description = "Number of slowest completed SQLs to deeply analyze. Default: 50.")
     int top;
 
+    @Option(names = "--sample-per-stratum", defaultValue = "5",
+            description = "Additional deep-analysis samples per stratum (spill/fetch/GC/skew/template). Default: 5.")
+    int samplePerStratum;
+
     @Option(names = "--bucket", defaultValue = "1h",
             description = "Timeline bucket size, e.g. 15m, 1h, 3600s. Default: 1h.")
     String bucket;
@@ -70,7 +74,7 @@ public final class QueueReportCommand implements Callable<Integer> {
                 HadoopCliConfiguration.load(hadoopConfDir, authToLocal);
 
         QueueAnalysisResult result = new QueueAnalyzer(conf)
-                .analyze(path, top, parseDurationMs(bucket));
+                .analyze(path, top, samplePerStratum, parseDurationMs(bucket));
         String fmt = format == null ? "html" : format.toLowerCase();
         Path outPath = Paths.get(out != null ? out : "queue-report." + fmt);
         ReportLanguage reportLanguage = ReportLanguage.resolve(lang, outPath);

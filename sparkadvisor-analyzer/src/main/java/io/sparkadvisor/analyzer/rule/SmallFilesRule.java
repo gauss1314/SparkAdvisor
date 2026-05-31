@@ -54,8 +54,7 @@ public final class SmallFilesRule implements Rule {
                             "Fewer, larger files reduce task count and scheduling overhead on every read.",
                             "Addresses the root cause for all future reads."),
                     Recommendation.conf(
-                            "raise spark.sql.files.maxPartitionBytes / openCostInBytes to pack more "
-                                    + "small files per task",
+                            "tune spark.sql.files.maxPartitionBytes / openCostInBytes / maxPartitionNum to pack or cap file-scan splits",
                             "Lets Spark combine more small files into each scan task.",
                             "Mitigates symptoms without rewriting data.")));
 

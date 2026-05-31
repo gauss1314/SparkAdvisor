@@ -12,8 +12,9 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * R11 — Physical-plan attribution for spill. Event logs only expose spill at task/stage level;
- * this heuristic connects that spill to sort/aggregate-heavy plans when the plan text supports it.
+ * R11 — Physical-plan attribution hint for spill. Event logs only expose spill at task/stage
+ * level; this heuristic connects that spill to sort/aggregate-heavy plans when the plan text
+ * supports it, but it is not operator-level proof.
  */
 public final class SortAggregateSpillRule implements Rule {
     @Override
@@ -43,13 +44,14 @@ public final class SortAggregateSpillRule implements Rule {
         evidence.put("planHasSort", String.valueOf(hasSort));
         evidence.put("planHasAggregate", String.valueOf(hasAggregate));
         evidence.put("totalSpillBytes", String.valueOf(totalSpill));
+        evidence.put("operatorLevelProof", "false");
         String explanation = "The physical plan contains sort/aggregate operators and the SQL spills; "
-                + "memory pressure is likely concentrated around those operators.";
+                + "this is a suspected attribution, not proof that those operators caused the spill.";
         List<Recommendation> recs = new ArrayList<Recommendation>();
         recs.add(Recommendation.sql(
-                "reduce sort/aggregate working set before the spilling operator",
-                "The physical plan contains sort or aggregate operators and the SQL spills; reducing rows/columns before those operators lowers memory pressure.",
-                "Usually more reliable than only increasing memory."));
+                "verify SQL operator metrics, then reduce sort/aggregate working set before the suspected operator",
+                "Task-level spill does not identify the exact operator; SQL UI operator metrics should confirm the attribution.",
+                "Usually more reliable than only increasing memory when the operator attribution is confirmed."));
         recs.add(Recommendation.conf(
                 "raise memory headroom or use smaller shuffle/advisory partitions for the spilling stage",
                 "Smaller operator inputs are less likely to spill during sort/aggregate.",

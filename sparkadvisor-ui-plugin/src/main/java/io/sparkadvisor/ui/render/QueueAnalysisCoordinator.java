@@ -1,19 +1,15 @@
 package io.sparkadvisor.ui.render;
 
+import io.sparkadvisor.monitor.QueueAnalysisContext;
 import io.sparkadvisor.monitor.QueueAnalyzer;
 import io.sparkadvisor.monitor.aggregate.QueueAnalysisResult;
+import io.sparkadvisor.monitor.checkpoint.EventLogSnapshot;
+import io.sparkadvisor.monitor.checkpoint.ReplayCheckpoint;
 import io.sparkadvisor.monitor.render.QueueHtmlWriter;
-import io.sparkadvisor.core.util.ValueObjects;
 import io.sparkadvisor.report.i18n.ReportLanguage;
 
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.FileStatus;
-import org.apache.hadoop.fs.FileSystem;
-import org.apache.hadoop.fs.Path;
 
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -36,6 +32,7 @@ public final class QueueAnalysisCoordinator {
     private final Configuration hadoopConf;
     private final QueueAnalyzer analyzer;
     private final QueueHtmlWriter htmlWriter = new QueueHtmlWriter();
+    private final ReplayCheckpoint checkpoint = new ReplayCheckpoint();
     private final ConcurrentHashMap<String, QueueAnalysisResult> cache = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, CompletableFuture<QueueAnalysisResult>> inFlight =
             new ConcurrentHashMap<>();
@@ -57,20 +54,42 @@ public final class QueueAnalysisCoordinator {
     }
 
     public String renderBody(String path, int topN, long bucketMs, ReportLanguage language) throws Exception {
-        Snapshot snapshot = snapshot(path);
-        QueueAnalysisResult cached = cache.get(snapshot.key());
+        return renderBody(path, topN, QueueAnalyzer.DEFAULT_SAMPLE_PER_STRATUM, bucketMs, language);
+    }
+
+    public String renderBody(String path, int topN, int samplePerStratum, long bucketMs,
+                             ReportLanguage language) throws Exception {
+        int normalizedTopN = Math.max(1, topN);
+        int normalizedSamplePerStratum = Math.max(0, samplePerStratum);
+        long normalizedBucketMs = Math.max(60_000L, bucketMs);
+        EventLogSnapshot snapshot = EventLogSnapshot.fromPath(path, hadoopConf);
+        String analysisKey = analysisKey(snapshot, normalizedTopN, normalizedSamplePerStratum, normalizedBucketMs);
+        EventLogSnapshot checkpointSnapshot = snapshot.withKey(analysisKey);
+        QueueAnalysisResult cached = cache.get(analysisKey);
         if (cached != null) {
             return htmlWriter.renderBody(cached, language);
         }
+        String checkpointed = checkpoint.readHtml(checkpointSnapshot, language);
+        if (checkpointed != null) {
+            return checkpointed;
+        }
 
-        CompletableFuture<QueueAnalysisResult> future = inFlight.computeIfAbsent(snapshot.key(),
+        CompletableFuture<QueueAnalysisResult> future = inFlight.computeIfAbsent(analysisKey,
                 key -> withTimeout(CompletableFuture.supplyAsync(() -> {
                     try {
-                        QueueAnalysisResult result = analyzer.analyze(path, topN, bucketMs);
+                        QueueAnalysisResult result = analyzer.analyze(path, normalizedTopN,
+                                normalizedSamplePerStratum, normalizedBucketMs,
+                                QueueAnalysisContext.fullSnapshot(snapshot.key(),
+                                        "Safe byte-offset replay is not enabled; this History Server "
+                                                + "report was produced by a full event-log snapshot replay "
+                                                + "and cached by snapshot plus analysis parameters."));
                         if (cache.size() >= MAX_CACHED_RESULTS) {
                             cache.clear();
                         }
                         cache.put(key, result);
+                        checkpoint.writeHtml(checkpointSnapshot,
+                                htmlWriter.renderBody(result, ReportLanguage.EN),
+                                htmlWriter.renderBody(result, ReportLanguage.ZH));
                         return result;
                     } catch (Exception e) {
                         throw new RuntimeException(e);
@@ -81,11 +100,11 @@ public final class QueueAnalysisCoordinator {
 
         if (future.isDone() && !future.isCompletedExceptionally()) {
             QueueAnalysisResult result = future.get();
-            cache.put(snapshot.key(), result);
+            cache.put(analysisKey, result);
             return htmlWriter.renderBody(result, language);
         }
         if (future.isCompletedExceptionally()) {
-            inFlight.remove(snapshot.key());
+            inFlight.remove(analysisKey);
             return language != null && language.isChinese()
                     ? "<div class=\"banner warn\">队列分析失败或超过 "
                     + ANALYSIS_TIMEOUT_MINUTES + " 分钟超时。刷新页面可重试。</div>"
@@ -95,40 +114,12 @@ public final class QueueAnalysisCoordinator {
         return inProgressHtml(snapshot, language);
     }
 
-    private Snapshot snapshot(String pathStr) throws Exception {
-        Path path = new Path(pathStr);
-        FileSystem fs = path.getFileSystem(hadoopConf);
-        long totalBytes = 0L;
-        long maxModificationTime = 0L;
-        if (fs.isDirectory(path)) {
-            List<FileStatus> statuses = new ArrayList<>();
-            collectFiles(fs, path, statuses);
-            for (FileStatus status : statuses) {
-                totalBytes += status.getLen();
-                maxModificationTime = Math.max(maxModificationTime, status.getModificationTime());
-            }
-        } else {
-            FileStatus status = fs.getFileStatus(path);
-            totalBytes = status.getLen();
-            maxModificationTime = status.getModificationTime();
-        }
-        return new Snapshot(pathStr + ":" + totalBytes + ":" + maxModificationTime,
-                totalBytes, maxModificationTime);
+    private String analysisKey(EventLogSnapshot snapshot, int topN, int samplePerStratum, long bucketMs) {
+        return snapshot.key() + "|top=" + topN + "|samplePerStratum=" + samplePerStratum
+                + "|bucketMs=" + bucketMs;
     }
 
-    private void collectFiles(FileSystem fs, Path root, List<FileStatus> out) throws Exception {
-        FileStatus[] statuses = fs.listStatus(root);
-        java.util.Arrays.sort(statuses, Comparator.comparing(s -> s.getPath().toString()));
-        for (FileStatus status : statuses) {
-            if (status.isDirectory()) {
-                collectFiles(fs, status.getPath(), out);
-            } else {
-                out.add(status);
-            }
-        }
-    }
-
-    private String inProgressHtml(Snapshot snapshot, ReportLanguage language) {
+    private String inProgressHtml(EventLogSnapshot snapshot, ReportLanguage language) {
         if (language != null && language.isChinese()) {
             return "<div class=\"banner warn\">队列分析正在后台运行。快照大小："
                     + bytes(snapshot.totalBytes())
@@ -166,16 +157,4 @@ public final class QueueAnalysisCoordinator {
         return String.format("%.2f %s", d, units[i]);
     }
 
-    private static final class Snapshot {
-        private final String key;
-        private final long totalBytes;
-        private final long modifiedAt;
-        private Snapshot(String key, long totalBytes, long modifiedAt){this.key=key;this.totalBytes=totalBytes;this.modifiedAt=modifiedAt;}
-        private String key(){return key;}
-        private long totalBytes(){return totalBytes;}
-        private long modifiedAt(){return modifiedAt;}
-        @Override public boolean equals(Object o){return ValueObjects.equalFields(this,o);}
-        @Override public int hashCode(){return ValueObjects.hashFields(this);}
-        @Override public String toString(){return ValueObjects.toString(this);}
-    }
 }

@@ -13,7 +13,7 @@ SparkAdvisor 是一个以 **Java 8 运行时兼容** 为目标、面向 **Apache
 - **调参预测**：对 shuffle partition 与 executor/core 伸缩做成本模型估计，输出假设、置信度和可能反转条件；倾斜场景会明确提示“调分区通常无效”。
 - **Advisor 建议**：默认使用离线确定性的 `RuleBasedAdvisor`；可通过 `--advise llm` 调用 LLM Advisor，默认 Provider 为 MiniMax-M2.5。LLM 只消费结构化 `AnalysisResult` / `QueueAnalysisResult` JSON，绝不发送原始 event log。
 - **队列级监控分析**：`queue-report` 汇总一整个长驻应用的所有 SQL，输出延迟分位、瓶颈聚类、固定资源池利用率、争用受限查询、资源大户与全局调参建议。
-- **History Server 集成**：提供 Spark History Server tab 插件，通过 `AppHistoryServerPlugin` / `ServiceLoader` 接入；默认展示队列级报告，输入 StatementID 可下钻单条 SQL。
+- **Spark UI 集成**：提供 Spark History Server tab 插件，通过 `AppHistoryServerPlugin` / `ServiceLoader` 接入；同时提供 live Driver Spark UI 插件，通过 `spark.plugins` 接入运行中查询队列。
 
 ## 架构原则
 
@@ -29,7 +29,7 @@ HDFS Event Log
   -> sparkadvisor-advisor   RuleBasedAdvisor / LlmAdvisor
   -> sparkadvisor-monitor   QueueAnalysisResult、争用时间轴、队列级规则与报告
   -> sparkadvisor-cli       命令行入口
-  -> sparkadvisor-ui-plugin Spark History Server tab
+  -> sparkadvisor-ui-plugin Spark History Server tab / live Driver tab
 ```
 
 关键约束：
@@ -46,7 +46,7 @@ HDFS Event Log
 
 - **M1**：父 POM、`core/report/cli`、领域模型、分位数估计器、StatementID 提取与定位、event log reader/parser、`MetricAggregator`、`AnalysisResult`、HTML/JSON 报告、CLI `analyze` 端到端。
 - **M2**：`sparkadvisor-analyzer` 规则引擎与 `sparkadvisor-predictor` 成本模型预测；报告新增 Predictions 区域。
-- **M3**：History Server tab 插件已实现，采用自给自足策略重解析 event log，不依赖 SHS 内部 store。
+- **M3**：History Server tab 插件已实现，采用自给自足策略重解析 event log，不依赖 SHS 内部 store；live Driver tab 通过 `SparkPlugin` 挂载，使用 driver listener 增量快照。
 - **F4**：`TuningAdvisor`、`RuleBasedAdvisor`、`LlmAdvisor`、`MinimaxLlmProvider`（默认 MiniMax-M2.5）、`AnthropicLlmProvider`（可选）、prompt 构造与 LLM JSON 响应解析已实现；LLM 失败时优雅降级。
 - **Monitor**：新增 `sparkadvisor-monitor`，包含 `QueueAnalyzer`、`QuerySeriesCollector`、`ContentionTimeline`、`QueueAggregator`、`QueueRuleEngine`、`QueueAnalysisResult`、队列 HTML/JSON 渲染和队列级 LLM Advisor；CLI 新增 `queue-report`，SHS tab 空 StatementID 时异步生成队列报告。
 
@@ -158,6 +158,15 @@ URL 形式：
 ```
 
 插件采用“自给自足”集成策略：`createListeners` 返回空，不干预 SHS 自身回放；tab 打开时使用 SparkAdvisor 自己的引擎懒解析 event log。队列报告按 event log 快照大小/修改时间异步单飞缓存，避免在 SHS UI 请求线程同步解析大日志。插件异常会被捕获并记录，不应影响应用原有 History UI。
+
+同一个 jar 也提供 live Driver Spark UI 入口。启动查询队列时把 jar 放入 driver classpath，并配置：
+
+```bash
+--conf spark.plugins=io.sparkadvisor.ui.live.SparkAdvisorSparkPlugin \
+--conf spark.sparkadvisor.live.enabled=true
+```
+
+live 模式通过 driver listener 增量聚合快照，不重放 event log；单 SQL 诊断默认可用。队列页如需资源占用/争用估计，可额外打开 `spark.sparkadvisor.live.collectTaskIntervals=true`。
 
 ## 报告内容
 

@@ -2,7 +2,7 @@
 
 本文档说明 SparkAdvisor 的两种使用方式：
 
-1. **Spark UI 方式**：部署到 Spark History Server，作为 **SparkAdvisor** tab 使用。
+1. **Spark History Server UI 方式**：部署到 Spark History Server，作为 **SparkAdvisor** tab 使用。
 2. **后台命令方式**：在集群客户端节点通过 `bin/sparkadvisor` 生成 HTML/JSON 报告。
 
 两种方式都只读 HDFS event log，不向生产 Driver 注册 listener，不影响 Spark 作业正常执行。Spark/Hadoop 依赖均为 `provided`，运行时由集群 Spark/Hadoop classpath 提供。
@@ -30,9 +30,11 @@ sparkadvisor-cli/target/sparkadvisor-cli.jar
 sparkadvisor-ui-plugin/target/sparkadvisor-ui-plugin.jar
 ```
 
-## 2. 方式一：Spark UI 使用
+## 2. 方式一：Spark History Server UI 使用
 
 SparkAdvisor 通过 Spark 官方扩展点 `org.apache.spark.status.AppHistoryServerPlugin` 接入 Spark History Server。插件由 Java `ServiceLoader` 自动发现，只要 jar 在 SHS classpath 中即可。
+
+> 注意：这是 **History Server 插件**，不是运行中查询队列/driver 的 live Spark UI 插件。把 jar 加到查询队列、Spark Thrift Server 或应用 driver classpath 后，Environment 页可能能看到该 jar，但不会触发 `AppHistoryServerPlugin`，也不会在 live Spark UI 上新增 tab。必须让 **History Server 进程** 的 classpath 包含该 jar，并重启 History Server。
 
 ### 2.1 构建 UI 插件
 
@@ -112,6 +114,29 @@ URL 形式：
 - 队列分析在受限后台线程池中异步单飞执行，避免 10 GB 级 `.inprogress` 日志阻塞 SHS UI 请求线程。
 - 队列页面会按 rolling event-log part 明细生成 snapshot key，并把 snapshot key + `top` + `samplePerStratum` + `bucket` 作为缓存/checkpoint key；默认目录为 `${java.io.tmpdir}/sparkadvisor-queue-checkpoints`，可用 `SPARKADVISOR_QUEUE_CHECKPOINT_DIR` 覆盖。当前 checkpoint 是结果 fast path，不是 byte-offset 增量回放；报告会以 `incremental=false` 和 `degradedReason` 保持诚实标注。
 - 插件内部异常会被捕获并记录，不应影响 Spark History Server 其它页面。
+
+### 2.7 Live Driver Spark UI 使用
+
+如果需要在运行中的查询队列/Driver Spark UI 上直接显示 SparkAdvisor tab，需要使用 Spark 的 `spark.plugins` 机制。该方式不通过 `AppHistoryServerPlugin`，而是在 driver 内注册轻量 listener，从内存聚合快照渲染页面。
+
+启动查询队列时确保 `sparkadvisor-ui-plugin.jar` 在 driver 启动 `SparkContext` 前可见，然后增加：
+
+```bash
+--conf spark.plugins=io.sparkadvisor.ui.live.SparkAdvisorSparkPlugin \
+--conf spark.sparkadvisor.live.enabled=true
+```
+
+如果已有其它 SparkPlugin，使用逗号追加：
+
+```bash
+--conf spark.plugins=existing.Plugin,io.sparkadvisor.ui.live.SparkAdvisorSparkPlugin
+```
+
+可选参数：
+
+| 参数 | 默认 | 说明 |
+| --- | --- | --- |
+| `spark.sparkadvisor.live.collectTaskIntervals` | `false` | 是否在 driver 内保留轻量 task interval，用于 live 队列页的资源占用/争用估计。长驻队列可能产生大量 task，默认关闭以控制 driver 内存。单 SQL 诊断不依赖该参数。 |
 
 ## 3. 方式二：后台命令使用
 
@@ -267,9 +292,18 @@ bin/sparkadvisor queue-report \
 
 **找不到 SparkAdvisor tab**
 
-- 确认 `sparkadvisor-ui-plugin.jar` 已在 SHS classpath 中。
+- 确认访问的是 Spark History Server 的应用页面，URL 形如 `.../history/<appId>/...`；运行中 driver 的 live Spark UI 不会加载 `AppHistoryServerPlugin`。
+- 确认 `sparkadvisor-ui-plugin.jar` 已在 **SHS 进程** classpath 中。Environment 页展示的是应用 event log 中记录的 driver/executor 环境，不代表 History Server 进程已加载该 jar。
 - 确认 jar 内存在 `META-INF/services/org.apache.spark.status.AppHistoryServerPlugin`。
 - 重启 History Server 后再打开应用页面。
+- 检查 SHS 日志是否有 `SparkAdvisor tab attached to History Server UI`；若没有该日志，通常是 SHS classpath 未生效；若有 `Failed to attach SparkAdvisor tab`，按后面的异常栈排查。
+
+**Live Driver Spark UI 找不到 SparkAdvisor tab**
+
+- 确认查询队列启动参数包含 `spark.plugins=io.sparkadvisor.ui.live.SparkAdvisorSparkPlugin`，且未覆盖已有 plugin 列表。
+- 确认 `spark.sparkadvisor.live.enabled=true`。
+- 确认 `sparkadvisor-ui-plugin.jar` 在 driver 启动 `SparkContext` 前已进入 classpath；只在 Environment 页看到 jar 但未配置 `spark.plugins` 不会加载 live 插件。
+- 检查 driver 日志是否有 `SparkAdvisor live tab attached to driver Spark UI` 或 `Failed to attach SparkAdvisor live tab`。
 
 **解析时报 `InaccessibleObjectException`**
 

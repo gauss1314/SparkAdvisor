@@ -5,6 +5,7 @@ import io.sparkadvisor.report.i18n.ReportLanguage;
 import io.sparkadvisor.ui.render.AnalysisCoordinator;
 import io.sparkadvisor.ui.render.EventLogPathResolver;
 import io.sparkadvisor.ui.render.QueueAnalysisCoordinator;
+import io.sparkadvisor.ui.render.HistoryRequestPath;
 import io.sparkadvisor.monitor.QueueAnalyzer;
 
 import org.apache.spark.ui.SparkUI;
@@ -61,8 +62,12 @@ public final class SparkAdvisorPage extends WebUIPage {
                 ? "1h"
                 : request.getParameter("bucket");
         long bucketMs = parseDurationMs(bucketValue);
+        HistoryRequestPath historyPath = HistoryRequestPath.fromRequestUri(request.getRequestURI());
         String appId = appId();
-        String path = pathResolver.pathFor(appId);
+        if (Strings.isBlank(appId) && historyPath.hasAppId()) {
+            appId = historyPath.appId();
+        }
+        String path = pathResolver.pathFor(appId, historyPath.attemptId());
 
         String bodyHtml;
         try {
@@ -186,7 +191,8 @@ public final class SparkAdvisorPage extends WebUIPage {
 
     private String appId() {
         try {
-            return ui.appId(); // VERIFY@3.5.1
+            String value = ui.appId(); // VERIFY@3.5.1
+            return Strings.isBlank(value) ? "" : value;
         } catch (Throwable t) {
             return "";
         }

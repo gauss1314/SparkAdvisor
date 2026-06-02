@@ -1,5 +1,6 @@
 package io.sparkadvisor.ui.plugin;
 
+import io.sparkadvisor.core.util.Strings;
 import io.sparkadvisor.ui.tab.SparkAdvisorTab;
 
 import org.apache.spark.SparkConf;
@@ -72,7 +73,8 @@ public final class SparkAdvisorHistoryPlugin implements AppHistoryServerPlugin {
     private static String safeAppId(SparkUI ui) {
         try {
             // VERIFY@3.5.1: SparkUI exposes the appId (Option[String]).
-            return ui.appId();
+            String appId = ui.appId();
+            return Strings.isBlank(appId) ? "<unknown>" : appId;
         } catch (Throwable t) {
             return "<unknown>";
         }

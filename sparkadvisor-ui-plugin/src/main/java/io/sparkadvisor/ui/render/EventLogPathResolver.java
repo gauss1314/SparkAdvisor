@@ -7,10 +7,11 @@ import org.apache.spark.SparkConf;
 /**
  * Resolves the HDFS event-log path for an application served by the History Server.
  *
- * <p>The SHS reads logs from {@code spark.history.fs.logDirectory}. For a given appId the
- * log is either {@code <logDir>/<appId>} (single file) or {@code <logDir>/<appId>} as a
- * rolling directory ({@code eventlog_v2_<appId>}); SparkAdvisor's EventLogReader handles
- * both forms, and also tolerates a trailing {@code .inprogress}.
+ * <p>The SHS reads logs from {@code spark.history.fs.logDirectory}. The UI only has the app id
+ * from {@code SparkUI}, so this resolver returns the app-id-shaped base candidate
+ * {@code <logDir>/<appId>}. Downstream readers resolve that candidate to the concrete log object,
+ * including Spark's rolling directory form {@code eventlog_v2_<appId>} and in-progress/suffixed
+ * single files.
  *
  * <p>VERIFY@3.5.1: config key {@code spark.history.fs.logDirectory} and appId/attempt shape.
  */
@@ -30,8 +31,7 @@ public final class EventLogPathResolver {
 
     /**
      * Candidate path for an application's event log. Returns {@code <logDir>/<appId>}; for
-     * applications with attempts, callers may append the attempt id. EventLogReader will
-     * detect single-file vs rolling-directory automatically.
+     * applications with attempts, callers may append the attempt id.
      */
     public String pathFor(String appId) {
         String base = stripTrailingSlash(logDir);

@@ -2,6 +2,7 @@ package io.sparkadvisor.monitor.checkpoint;
 
 import io.sparkadvisor.core.util.Java8Collections;
 import io.sparkadvisor.core.util.ValueObjects;
+import io.sparkadvisor.core.eventlog.EventLogReader;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
@@ -36,7 +37,8 @@ public final class EventLogSnapshot {
     }
 
     public static EventLogSnapshot fromPath(String pathStr, Configuration conf) throws IOException {
-        Path path = new Path(pathStr);
+        Path path = EventLogReader.resolveExistingPath(pathStr, conf);
+        String resolvedPath = path.toString();
         FileSystem fs = path.getFileSystem(conf);
         List<Part> parts = new ArrayList<Part>();
         if (fs.isDirectory(path)) {
@@ -53,14 +55,14 @@ public final class EventLogSnapshot {
         }
         long totalBytes = 0L;
         long modifiedAt = 0L;
-        StringBuilder key = new StringBuilder(pathStr);
+        StringBuilder key = new StringBuilder(resolvedPath);
         for (Part part : parts) {
             totalBytes += part.length();
             modifiedAt = Math.max(modifiedAt, part.modifiedAt());
             key.append('|').append(part.name()).append(':')
                     .append(part.length()).append(':').append(part.modifiedAt());
         }
-        return new EventLogSnapshot(pathStr, key.toString(), totalBytes, modifiedAt, parts);
+        return new EventLogSnapshot(resolvedPath, key.toString(), totalBytes, modifiedAt, parts);
     }
 
     private static void collectFiles(FileSystem fs, Path root, List<FileStatus> out) throws IOException {

@@ -15,7 +15,6 @@ import java.io.InputStream;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 
@@ -49,6 +48,17 @@ public final class EventLogReader implements AutoCloseable {
     private static final String INPROGRESS_SUFFIX = ".inprogress";
     private static final int JSON_PROBE_BYTES = 64 * 1024;
     private static final String[] SPARK_EVENT_LOG_CODECS = {"zstd", "lz4", "snappy", "lzf"};
+    private static final String[] EVENT_LOG_FILE_SUFFIXES = {
+            INPROGRESS_SUFFIX,
+            ".zstd",
+            ".lz4",
+            ".snappy",
+            ".lzf",
+            ".zstd" + INPROGRESS_SUFFIX,
+            ".lz4" + INPROGRESS_SUFFIX,
+            ".snappy" + INPROGRESS_SUFFIX,
+            ".lzf" + INPROGRESS_SUFFIX
+    };
 
     private final FileSystem fs;
     private final Path root;
@@ -56,9 +66,23 @@ public final class EventLogReader implements AutoCloseable {
     private final List<InputStream> opened = new ArrayList<>();
 
     public EventLogReader(String pathStr, Configuration conf) throws IOException {
-        this.root = new Path(pathStr);
+        this.root = resolveExistingPath(pathStr, conf);
         this.fs = root.getFileSystem(conf);
         this.codecFactory = new CompressionCodecFactory(conf);
+    }
+
+    /**
+     * Resolve a History Server app path to the concrete event-log object when Spark used a
+     * sibling rolling directory or suffix-qualified single file.
+     *
+     * <p>The SHS URL exposes an app id, while {@code spark.history.fs.logDirectory} may contain
+     * either {@code <appId>} or {@code eventlog_v2_<appId>}. If no candidate exists, the original
+     * path is returned so callers still get Hadoop's normal "file does not exist" error.
+     */
+    public static Path resolveExistingPath(String pathStr, Configuration conf) throws IOException {
+        Path requested = new Path(pathStr);
+        FileSystem fs = requested.getFileSystem(conf);
+        return resolveExistingPath(requested, fs);
     }
 
     /** True if the log is (or appears) still being written. */
@@ -281,6 +305,45 @@ public final class EventLogReader implements AutoCloseable {
 
     public Path rootPath() {
         return root;
+    }
+
+    private static Path resolveExistingPath(Path requested, FileSystem fs) throws IOException {
+        List<Path> candidates = candidatePaths(requested);
+        for (Path candidate : candidates) {
+            if (fs.exists(candidate)) {
+                return candidate;
+            }
+        }
+        return requested;
+    }
+
+    private static List<Path> candidatePaths(Path requested) {
+        List<Path> candidates = new ArrayList<Path>();
+        addCandidate(candidates, requested);
+
+        String name = requested.getName();
+        if (!name.startsWith(ROLLING_DIR_PREFIX)) {
+            addCandidate(candidates, sibling(requested, ROLLING_DIR_PREFIX + name));
+        }
+
+        for (int i = 0; i < EVENT_LOG_FILE_SUFFIXES.length; i++) {
+            addCandidate(candidates, sibling(requested, name + EVENT_LOG_FILE_SUFFIXES[i]));
+        }
+        return candidates;
+    }
+
+    private static Path sibling(Path path, String name) {
+        Path parent = path.getParent();
+        return parent == null ? new Path(name) : new Path(parent, name);
+    }
+
+    private static void addCandidate(List<Path> candidates, Path candidate) {
+        for (int i = 0; i < candidates.size(); i++) {
+            if (candidates.get(i).equals(candidate)) {
+                return;
+            }
+        }
+        candidates.add(candidate);
     }
 
     @Override

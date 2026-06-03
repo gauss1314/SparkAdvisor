@@ -1,9 +1,11 @@
 package io.sparkadvisor.monitor.checkpoint;
 
 import io.sparkadvisor.report.i18n.ReportLanguage;
+import org.apache.hadoop.conf.Configuration;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 
@@ -47,8 +49,33 @@ class ReplayCheckpointTest {
         assertNull(checkpoint.readHtml(top10, ReportLanguage.EN));
     }
 
+    @Test
+    void snapshotResolvesRollingDirectorySiblingFromAppIdCandidate() throws Exception {
+        String appId = "spark-412e7687815849da9cf38719e24197f1";
+        Path historyDir = dir.resolve("sparkK8sJobHistory");
+        Path rollingDir = historyDir.resolve("eventlog_v2_" + appId);
+        Files.createDirectories(rollingDir);
+        Files.writeString(rollingDir.resolve("events_1_" + appId), "{}\n");
+
+        EventLogSnapshot snapshot = EventLogSnapshot.fromPath(historyDir.resolve(appId).toString(), localConf());
+
+        assertEquals(hadoopPath(rollingDir), snapshot.path());
+        assertEquals("events_1_" + appId, snapshot.parts().get(0).name());
+    }
+
     private static EventLogSnapshot snapshot(String key) {
         return new EventLogSnapshot("hdfs:///events", key, 12L, 34L,
                 List.of(new EventLogSnapshot.Part("events_1_app", "hdfs:///events/events_1_app", 12L, 34L)));
+    }
+
+    private static Configuration localConf() {
+        Configuration conf = new Configuration(false);
+        conf.set("fs.defaultFS", "file:///");
+        conf.set("fs.file.impl", "org.apache.hadoop.fs.LocalFileSystem");
+        return conf;
+    }
+
+    private static String hadoopPath(Path path) {
+        return new org.apache.hadoop.fs.Path(path.toString()).toString();
     }
 }

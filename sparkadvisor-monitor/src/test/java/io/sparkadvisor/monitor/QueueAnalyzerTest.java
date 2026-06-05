@@ -48,6 +48,23 @@ class QueueAnalyzerTest {
                 shuffleRead.sum(), 0L, stats);
     }
 
+    private static Stage stageWithStats(int id, int tasks, long submit, long firstLaunch, long complete,
+                                        Distribution durations, Distribution shuffleRead,
+                                        Distribution input, Distribution spill, Distribution gc) {
+        TaskMetricStats stats = new TaskMetricStats(
+                durations,
+                shuffleRead,
+                Distribution.EMPTY,
+                input,
+                Distribution.EMPTY,
+                spill,
+                Distribution.EMPTY,
+                gc,
+                Distribution.EMPTY);
+        return new Stage(id, 0, tasks, new java.util.ArrayList<>(), submit, firstLaunch, complete,
+                shuffleRead.sum(), 0L, stats);
+    }
+
     private static ApplicationModel queueApp() {
         SqlExecution hog = new SqlExecution(1L, "big",
                 "/* big */ select * from large_join", "", 1L, 60_000L, false, java.util.Arrays.asList(1L));
@@ -80,6 +97,42 @@ class QueueAnalyzerTest {
 	                                50_000L, 35_000_000_000L, 100L, 0L, false, false),
 	                        new TaskInterval(5, 2, 0, 2L, "4", 10_000L, 10_500L,
 	                                500L, 350_000_000L, 0L, 0L, false, false)));
+    }
+
+    private static ApplicationModel lightMetricQueueApp() {
+        java.util.List<SqlExecution> sqls = new java.util.ArrayList<>();
+        java.util.List<Job> jobs = new java.util.ArrayList<>();
+        java.util.List<Stage> stages = new java.util.ArrayList<>();
+
+        sqls.add(new SqlExecution(1L, "slow",
+                "/* slow */ select count(*) from large_table", "", 1L, 120_001L, false,
+                java.util.Arrays.asList(1L)));
+        jobs.add(new Job(1, 1L, java.util.Arrays.asList(1), 1L, 120_001L, false));
+        stages.add(stageWithStats(1, 10, 1L, 1L, 120_001L,
+                new Distribution(10, 12_000L, 12_000L, 12_000L, 12_000L, 12_000L, 12_000L, 120_000L),
+                Distribution.EMPTY, Distribution.EMPTY, Distribution.EMPTY, Distribution.EMPTY));
+
+        for (int i = 2; i <= 6; i++) {
+            long start = i * 30_000L;
+            long end = start + 20_000L;
+            sqls.add(new SqlExecution(i, "small-" + i,
+                    "/* small_" + i + " */ select * from tiny_files where id = " + i,
+                    "Scan parquet tiny_files", start, end, false,
+                    java.util.Arrays.asList((long) i)));
+            jobs.add(new Job(i, (long) i, java.util.Arrays.asList(i), start, end, false));
+            stages.add(stageWithStats(i, 2_500, start, start, end,
+                    new Distribution(2_500, 100L, 100L, 100L, 100L, 100L, 100L, 250_000L),
+                    Distribution.EMPTY,
+                    new Distribution(2_500, 1_024L, 1_024L, 1_024L, 1_024L, 1_024L, 1_024L, 2_560_000L),
+                    Distribution.EMPTY,
+                    Distribution.EMPTY));
+        }
+
+        Map<String, String> conf = new LinkedHashMap<>();
+        conf.put("spark.executor.instances", "2");
+        conf.put("spark.executor.cores", "2");
+        return new ApplicationModel("app-light", "LightMetricQueue", 1L, 200_000L, false, conf,
+                sqls, jobs, stages, new java.util.ArrayList<>(), new java.util.ArrayList<>());
     }
 
     @Test
@@ -126,6 +179,23 @@ class QueueAnalyzerTest {
         assertTrue(result.sampledQueries().stream().anyMatch(q -> q.executionId() == 2L),
                 "skew-heavy query should be selected by stratum even when it is not top-1");
         assertTrue(result.meta().deepAnalyzedQueries() > 1);
+    }
+
+    @Test
+    void queueRulesUseFullLightMetricsWhenDeepSampleMissesCommonSignals() {
+        var result = new QueueAnalyzer().analyze(lightMetricQueueApp(), "synthetic-light", 1, 0, 60_000L);
+
+        assertEquals(1, result.meta().deepAnalyzedQueries());
+        assertTrue(result.bottlenecks().stream()
+                        .anyMatch(b -> b.ruleId().equals("R5_SMALL_FILES")
+                                && b.scope().contains("FULL_QUEUE")
+                                && b.affectedQueries() == 5
+                                && b.affectedPct() > 0.80),
+                "small-file cluster should be derived from all completed SQL light metrics");
+        assertTrue(result.globalRecommendations().stream()
+                        .anyMatch(r -> r.queueRuleId().equals("Q7_COMMON_SMALL_FILES")
+                                && r.caveats().contains("Light metrics cover all completed SQL executions")),
+                "Q7 should trigger even though the small-file SQLs were not deep-analyzed");
     }
 
     @Test

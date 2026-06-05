@@ -1,5 +1,8 @@
 package io.sparkadvisor.monitor.aggregate;
 
+import io.sparkadvisor.analyzer.RuleThresholds;
+import io.sparkadvisor.core.analyze.SqlAnalysis;
+import io.sparkadvisor.core.analyze.StageAnalysis;
 import io.sparkadvisor.core.finding.Finding;
 import io.sparkadvisor.core.model.ApplicationModel;
 import io.sparkadvisor.core.model.ExecutorEvent;
@@ -16,14 +19,18 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Aggregates per-SQL samples plus the contention timeline into the queue-level contract.
  */
 public final class QueueAggregator {
+
+    private static final RuleThresholds LIGHT_RULE_THRESHOLDS = RuleThresholds.defaults();
 
     private final QueueRuleEngine ruleEngine = new QueueRuleEngine();
 
@@ -135,24 +142,116 @@ public final class QueueAggregator {
     }
 
     private List<QueueAnalysisResult.BottleneckCluster> bottlenecks(List<QuerySample> samples) {
-        List<QuerySample> analyzed = samples.stream().filter(QuerySample::deepAnalyzed).collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
-        int denominator = Math.max(1, analyzed.size());
+        List<QuerySample> completed = samples.stream()
+                .filter(q -> !q.running() && q.durationMs() > 0L)
+                .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
+        List<QuerySample> analyzed = completed.stream()
+                .filter(QuerySample::deepAnalyzed)
+                .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
+        int lightDenominator = Math.max(1, completed.size());
+        int deepDenominator = Math.max(1, analyzed.size());
         double coverage = samples.isEmpty() ? 0.0 : (double) analyzed.size() / (double) samples.size();
         Map<String, RuleCount> counts = new HashMap<>();
+        for (QuerySample sample : completed) {
+            for (RuleSignal signal : lightSignals(sample)) {
+                addRule(counts, signal.ruleId, signal.category, sample.executionId(), true);
+            }
+        }
         for (QuerySample sample : analyzed) {
             for (Finding finding : sample.findings()) {
-                counts.computeIfAbsent(finding.ruleId(),
-                                ignored -> new RuleCount(finding.ruleId(), finding.category()))
-                        .affected++;
+                addRule(counts, finding.ruleId(), finding.category(), sample.executionId(), false);
             }
         }
         return Java8Collections.listCopy(counts.values().stream()
-                .sorted(Comparator.comparingInt((RuleCount c) -> c.affected).reversed()
+                .sorted(Comparator.comparingInt((RuleCount c) -> c.affected()).reversed()
                         .thenComparing(c -> c.ruleId))
                 .map(c -> new QueueAnalysisResult.BottleneckCluster(
-                        c.ruleId, c.category, c.affected, (double) c.affected / denominator,
-                        "DEEP_SAMPLE", coverage))
+                        c.ruleId, c.category, c.affected(), c.affectedPct(lightDenominator, deepDenominator),
+                        c.scope(), c.sampleCoveragePct(coverage)))
                 .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new)));
+    }
+
+    private static void addRule(Map<String, RuleCount> counts, String ruleId, String category,
+                                long executionId, boolean lightEvidence) {
+        RuleCount count = counts.computeIfAbsent(ruleId, ignored -> new RuleCount(ruleId, category));
+        count.add(executionId, lightEvidence);
+    }
+
+    private static List<RuleSignal> lightSignals(QuerySample sample) {
+        List<RuleSignal> signals = new ArrayList<RuleSignal>();
+        SqlAnalysis analysis = sample.sqlAnalysis();
+        if (analysis == null) {
+            return signals;
+        }
+
+        RuleThresholds t = LIGHT_RULE_THRESHOLDS;
+        if (sample.coreUtilization() > 0.0 && sample.coreUtilization() < t.coreUtilLow()) {
+            signals.add(new RuleSignal("R3_LOW_PARALLELISM", "parallelism"));
+        }
+
+        String plan = analysis.physicalPlanText();
+        if (!Strings.isBlank(plan)) {
+            boolean hasSortMergeJoin = plan.contains("SortMergeJoin");
+            boolean hasBroadcastJoin = plan.contains("BroadcastHashJoin")
+                    || plan.contains("BroadcastNestedLoopJoin");
+            if (hasSortMergeJoin && !hasBroadcastJoin) {
+                signals.add(new RuleSignal("R7_BROADCAST_JOIN", "join"));
+            }
+            boolean hasSort = plan.contains("Sort");
+            boolean hasAggregate = plan.contains("HashAggregate")
+                    || plan.contains("ObjectHashAggregate")
+                    || plan.contains("SortAggregate");
+            if ((hasSort || hasAggregate) && sample.spillBytes() > 0L) {
+                signals.add(new RuleSignal("R11_SORT_AGG_SPILL", "plan"));
+            }
+        }
+
+        Set<String> stageLevelRules = new HashSet<String>();
+        for (StageAnalysis st : analysis.stages()) {
+            if (st.skewRatio() >= t.skewRatioWarn()
+                    || st.shuffleSkewRatio() >= t.shuffleSkewWarn()) {
+                stageLevelRules.add("R1_DATA_SKEW|skew");
+            }
+            if (st.spillBytes() > 0L
+                    && (double) st.spillBytes() / (double) Math.max(st.shuffleReadBytes(), 1L)
+                    >= t.spillRatioWarn()) {
+                stageLevelRules.add("R2_EXCESSIVE_SPILL|spill");
+            }
+            if (st.medianTaskMs() > 0L && st.medianTaskMs() < t.smallTaskMedianMs()
+                    && st.numTasks() >= t.overParallelMinTasks()) {
+                stageLevelRules.add("R4_OVER_PARALLELISM|parallelism");
+            }
+            if (st.inputBytes() > 0L && st.numTasks() >= t.overParallelMinTasks()
+                    && st.medianInputBytesPerTask() > 0L
+                    && st.medianInputBytesPerTask() < t.smallInputPerTaskBytes()) {
+                stageLevelRules.add("R5_SMALL_FILES|small-files");
+            }
+            if (st.gcRatio() >= t.gcRatioWarn()) {
+                stageLevelRules.add("R6_GC_PRESSURE|gc");
+            }
+            if (st.wallClockMs() > 0L && st.schedulingDelayMs() > 0L
+                    && (double) st.schedulingDelayMs() / (double) st.wallClockMs()
+                    >= t.schedulingDelayRatioWarn()) {
+                stageLevelRules.add("R8_SCHEDULING_DELAY|scheduling");
+            }
+            if (st.shuffleReadBytes() > 0L && st.shuffleFetchWaitMs() > 0L
+                    && st.totalTaskTimeMs() > 0L
+                    && (double) st.shuffleFetchWaitMs() / (double) st.totalTaskTimeMs()
+                    >= t.shuffleFetchWaitRatioWarn()) {
+                stageLevelRules.add("R9_SHUFFLE_FETCH_WAIT|shuffle");
+            }
+            double extraRatio = st.numTasks() <= 0 ? 0.0
+                    : (double) st.extraTaskAttempts() / (double) st.numTasks();
+            if (st.failedTaskAttempts() >= t.failedTaskAttemptsWarn()
+                    || extraRatio >= t.extraTaskAttemptRatioWarn()) {
+                stageLevelRules.add("R10_TASK_RETRY|reliability");
+            }
+        }
+        for (String signal : stageLevelRules) {
+            int split = signal.indexOf('|');
+            signals.add(new RuleSignal(signal.substring(0, split), signal.substring(split + 1)));
+        }
+        return signals;
     }
 
     private QueueAnalysisResult.UtilizationSeries utilization(ContentionTimeline contention) {
@@ -393,9 +492,50 @@ public final class QueueAggregator {
     private static final class RuleCount {
         final String ruleId;
         final String category;
-        int affected;
+        final Set<Long> affectedExecutions = new HashSet<Long>();
+        boolean hasLightEvidence;
+        boolean hasDeepEvidence;
 
         RuleCount(String ruleId, String category) {
+            this.ruleId = ruleId;
+            this.category = category;
+        }
+
+        void add(long executionId, boolean lightEvidence) {
+            affectedExecutions.add(executionId);
+            if (lightEvidence) {
+                hasLightEvidence = true;
+            } else {
+                hasDeepEvidence = true;
+            }
+        }
+
+        int affected() {
+            return affectedExecutions.size();
+        }
+
+        double affectedPct(int lightDenominator, int deepDenominator) {
+            int denominator = hasLightEvidence ? lightDenominator : deepDenominator;
+            return (double) affected() / (double) Math.max(1, denominator);
+        }
+
+        double sampleCoveragePct(double deepCoverage) {
+            return hasLightEvidence ? 1.0 : deepCoverage;
+        }
+
+        String scope() {
+            if (hasLightEvidence && hasDeepEvidence) {
+                return "FULL_QUEUE_LIGHT+DEEP_SAMPLE";
+            }
+            return hasLightEvidence ? "FULL_QUEUE_LIGHT" : "DEEP_SAMPLE";
+        }
+    }
+
+    private static final class RuleSignal {
+        final String ruleId;
+        final String category;
+
+        RuleSignal(String ruleId, String category) {
             this.ruleId = ruleId;
             this.category = category;
         }

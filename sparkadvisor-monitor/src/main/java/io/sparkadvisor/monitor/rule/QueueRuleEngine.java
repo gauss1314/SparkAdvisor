@@ -26,12 +26,9 @@ public final class QueueRuleEngine {
     public List<QueueAnalysisResult.QueueRecommendation> recommend(QueueAnalysisResult result) {
         List<QueueAnalysisResult.QueueRecommendation> recs = new ArrayList<>();
         int completed = result.summary().completedQueries();
-        int analyzed = Math.max(1, result.meta().deepAnalyzedQueries());
-        String sampleCaveat = "Deep findings cover " + pct(result.meta().deepCoveragePct())
-                + " of SQL executions; low coverage reduces confidence.";
 
         cluster(result, "R2_EXCESSIVE_SPILL").ifPresent(c -> {
-            if (common(c, analyzed)) {
+            if (common(c, result)) {
                 recs.add(rec("Q1_COMMON_SPILL_PRESSURE",
                         Recommendation.conf("Reduce skew/oversized reducer partitions first; increase spark.executor.memory only after partition shape is sane",
                                 "Recurring spill can come from reduce-side partition size, operator working sets, or skew; memoryOverhead is not the normal JVM SQL spill fix.",
@@ -39,12 +36,12 @@ public final class QueueRuleEngine {
                         evidence(c),
                         Confidence.MEDIUM,
                         coverage(c, completed),
-                        sampleCaveat));
+                        caveat(result, c)));
             }
         });
 
         cluster(result, "R1_DATA_SKEW").ifPresent(c -> {
-            if (common(c, analyzed)) {
+            if (common(c, result)) {
                 recs.add(rec("Q2_COMMON_LONG_TAIL_SKEW",
                         Recommendation.conf("Audit AQE skew-join settings and skewed join keys",
                                 "Repeated skew findings are usually key-distribution issues; changing only shuffle.partitions is unlikely to fix them.",
@@ -52,7 +49,7 @@ public final class QueueRuleEngine {
                         evidence(c),
                         Confidence.HIGH,
                         coverage(c, completed),
-                        sampleCaveat));
+                        caveat(result, c)));
             }
         });
 
@@ -69,8 +66,8 @@ public final class QueueRuleEngine {
                             "Expected to improve mixed workloads without penalizing small queries as much."),
                     evidence(lowParallel.get()) + "; " + evidence(overParallel.get()),
                     Confidence.HIGH,
-                    "Covers both affected groups in the analyzed sample.",
-                    sampleCaveat));
+                    "Covers both affected groups in the queue evidence.",
+                    caveat(result, lowParallel.get(), overParallel.get())));
         }
 
         double avgUtil = result.utilization().avgUtilization();
@@ -117,7 +114,7 @@ public final class QueueRuleEngine {
         }
 
         cluster(result, "R5_SMALL_FILES").ifPresent(c -> {
-            if (common(c, analyzed)) {
+            if (common(c, result)) {
                 recs.add(rec("Q7_COMMON_SMALL_FILES",
                         Recommendation.conf("Compact upstream files and review spark.sql.files.maxPartitionBytes/openCostInBytes/maxPartitionNum",
                                 "Repeated small-file scan findings indicate scheduling overhead and tiny input splits across the queue.",
@@ -125,12 +122,12 @@ public final class QueueRuleEngine {
                         evidence(c),
                         Confidence.HIGH,
                         coverage(c, completed),
-                        sampleCaveat));
+                        caveat(result, c)));
             }
         });
 
         cluster(result, "R6_GC_PRESSURE").ifPresent(c -> {
-            if (common(c, analyzed)) {
+            if (common(c, result)) {
                 recs.add(rec("Q8_COMMON_GC_OBJECT_CHURN",
                         Recommendation.conf("Review object-heavy UDFs, vectorization/codegen fallbacks, cache layout, then tune memory or GC",
                                 "Repeated GC findings indicate JVM overhead is a queue-wide symptom, not an isolated query.",
@@ -138,7 +135,7 @@ public final class QueueRuleEngine {
                         evidence(c),
                         Confidence.MEDIUM,
                         coverage(c, completed),
-                        sampleCaveat));
+                        caveat(result, c)));
             }
         });
 
@@ -154,7 +151,7 @@ public final class QueueRuleEngine {
         }
 
         cluster(result, "R7_BROADCAST_JOIN").ifPresent(c -> {
-            if (common(c, analyzed)) {
+            if (common(c, result)) {
                 recs.add(rec("Q10_STATS_CBO_OR_JOIN_STRATEGY",
                         Recommendation.sql("Refresh table/column stats and verify EXPLAIN COST/runtime sizeInBytes before changing join thresholds",
                                 "Repeated broadcast-join opportunities without stats evidence often mean planner inputs are missing or stale.",
@@ -162,27 +159,32 @@ public final class QueueRuleEngine {
                         evidence(c),
                         Confidence.MEDIUM,
                         coverage(c, completed),
-                        "Join type, build side legality, hints, AQE final plan, broadcast timeout, and memory fit must be verified."));
+                        caveat(result, c)
+                                + " Join type, build side legality, hints, AQE final plan, broadcast timeout, and memory fit must be verified."));
             }
         });
 
-        if (hasCluster(result, "R7_BROADCAST_JOIN") || hasCluster(result, "R9_SHUFFLE_FETCH_WAIT")
-                || hasCluster(result, "R11_SORT_AGG_SPILL")) {
+        List<QueueAnalysisResult.BottleneckCluster> mechanismClusters = mechanismClusters(result);
+        if (!mechanismClusters.isEmpty()) {
             recs.add(rec("Q11_QUEUE_EXECUTION_MECHANISM_GAPS",
                     Recommendation.sql("Audit pushdown/vectorization/DPP/runtime filters/AQE join conversion on repeated slow templates",
                             "Repeated plan and shuffle symptoms suggest mechanism-level opportunities that cannot be solved by one generic capacity knob.",
                             "Expected to convert queue advice from symptoms into plan fixes."),
-                    "mechanismClusters=broadcast/fetch/spill where present",
+                    mechanismEvidence(mechanismClusters),
                     Confidence.LOW,
-                    "Applies to repeated templates represented in the deep sample.",
-                    "This is a mechanism checklist; confirm with SQL UI operator metrics and final adaptive plans."));
+                    "Applies to repeated templates represented in the queue evidence.",
+                    caveat(result, mechanismClusters.toArray(new QueueAnalysisResult.BottleneckCluster[0]))
+                            + " This is a mechanism checklist; confirm with SQL UI operator metrics and final adaptive plans."));
         }
 
         return recs;
     }
 
-    private boolean common(QueueAnalysisResult.BottleneckCluster c, int analyzed) {
-        return c.affectedQueries() >= Math.min(thresholds.minAnalyzedQueries(), analyzed)
+    private boolean common(QueueAnalysisResult.BottleneckCluster c, QueueAnalysisResult result) {
+        int baseline = c.scope().contains("FULL_QUEUE")
+                ? Math.max(1, result.summary().completedQueries())
+                : Math.max(1, result.meta().deepAnalyzedQueries());
+        return c.affectedQueries() >= Math.min(thresholds.minAnalyzedQueries(), baseline)
                 || c.affectedPct() >= thresholds.commonBottleneckPct();
     }
 
@@ -192,8 +194,15 @@ public final class QueueRuleEngine {
                 .findFirst();
     }
 
-    private boolean hasCluster(QueueAnalysisResult r, String ruleId) {
-        return cluster(r, ruleId).isPresent();
+    private List<QueueAnalysisResult.BottleneckCluster> mechanismClusters(QueueAnalysisResult result) {
+        List<QueueAnalysisResult.BottleneckCluster> clusters = new ArrayList<QueueAnalysisResult.BottleneckCluster>();
+        for (String ruleId : new String[]{"R7_BROADCAST_JOIN", "R9_SHUFFLE_FETCH_WAIT", "R11_SORT_AGG_SPILL"}) {
+            Optional<QueueAnalysisResult.BottleneckCluster> cluster = cluster(result, ruleId);
+            if (cluster.isPresent() && common(cluster.get(), result)) {
+                clusters.add(cluster.get());
+            }
+        }
+        return clusters;
     }
 
     private QueueAnalysisResult.QueueRecommendation rec(String id, Recommendation recommendation,
@@ -210,17 +219,42 @@ public final class QueueRuleEngine {
     }
 
     private String evidence(QueueAnalysisResult.BottleneckCluster c) {
-        return c.ruleId() + " affected " + c.affectedQueries() + " analyzed queries ("
+        String population = c.scope().contains("FULL_QUEUE") ? "completed queries" : "deep-analyzed queries";
+        return c.ruleId() + " affected " + c.affectedQueries() + " " + population + " ("
                 + pct(c.affectedPct()) + "), scope=" + c.scope()
                 + ", sampleCoverage=" + pct(c.sampleCoveragePct());
+    }
+
+    private String mechanismEvidence(List<QueueAnalysisResult.BottleneckCluster> clusters) {
+        List<String> parts = new ArrayList<String>();
+        for (QueueAnalysisResult.BottleneckCluster cluster : clusters) {
+            parts.add(evidence(cluster));
+        }
+        return String.join("; ", parts);
     }
 
     private String coverage(QueueAnalysisResult.BottleneckCluster c, int completed) {
         if (completed <= 0) {
             return "No completed queries in this snapshot.";
         }
+        if (c.scope().contains("FULL_QUEUE")) {
+            return "At least " + c.affectedQueries() + " of " + completed
+                    + " completed queries show this evidence in full-queue light metrics.";
+        }
         return "At least " + c.affectedQueries() + " of " + completed
-                + " completed queries show this evidence in the analyzed slow-query set.";
+                + " completed queries show this evidence in the analyzed deep sample.";
+    }
+
+    private String caveat(QueueAnalysisResult result, QueueAnalysisResult.BottleneckCluster... clusters) {
+        boolean hasFullQueueLight = false;
+        for (QueueAnalysisResult.BottleneckCluster cluster : clusters) {
+            hasFullQueueLight = hasFullQueueLight || cluster.scope().contains("FULL_QUEUE");
+        }
+        if (hasFullQueueLight) {
+            return "Light metrics cover all completed SQL executions; operator-level attribution still requires drilldown.";
+        }
+        return "Deep findings cover " + pct(result.meta().deepCoveragePct())
+                + " of SQL executions; low coverage reduces confidence.";
     }
 
     private static String pct(double v) {

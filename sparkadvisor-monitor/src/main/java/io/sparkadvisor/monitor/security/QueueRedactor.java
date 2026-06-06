@@ -50,6 +50,7 @@ public final class QueueRedactor {
                 result.contention(),
                 result.topSlowQueries(),
                 result.sampledQueries(),
+                result.templateStats(),
                 result.globalRecommendations(),
                 result.aiAdvice(),
                 redactedMeta);

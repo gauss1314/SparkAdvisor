@@ -104,6 +104,7 @@ public final class QueueHtmlWriter {
         bottlenecks(h, r, zh);
         contention(h, r, zh);
         slowQueries(h, r, zh);
+        templateStats(h, r, zh);
         recommendations(h, r, language);
         aiAdvice(h, r, language);
         embeddedJson(h, r, zh);
@@ -221,8 +222,8 @@ public final class QueueHtmlWriter {
         if (r.bottlenecks().isEmpty()) {
             h.append("<p class=\"muted\">")
                     .append(t(zh,
-                            "No repeated bottlenecks in the deeply analyzed slow-query set.",
-                            "深度分析的慢查询集中没有发现重复瓶颈。"))
+                            "No repeated bottlenecks met the queue evidence threshold.",
+                            "没有重复瓶颈达到队列证据阈值。"))
                     .append("</p></section>");
             return;
         }
@@ -339,6 +340,38 @@ public final class QueueHtmlWriter {
             h.append("</tr>");
         }
         h.append("</tbody></table>");
+    }
+
+    private void templateStats(StringBuilder h, QueueAnalysisResult r, boolean zh) {
+        h.append("<section><h2>").append(t(zh, "Template cost", "模板成本"))
+                .append("</h2>");
+        if (r.templateStats().isEmpty()) {
+            h.append("<p class=\"muted\">")
+                    .append(t(zh, "No completed SQL templates.", "没有已完成 SQL 模板。"))
+                    .append("</p></section>");
+            return;
+        }
+        h.append("<table><thead><tr>");
+        th(h, "Template");
+        th(h, t(zh, "Example", "示例"));
+        th(h, t(zh, "Queries", "查询数"));
+        th(h, t(zh, "Total duration", "总耗时"));
+        th(h, "Core-ms");
+        th(h, t(zh, "Input", "输入"));
+        th(h, "Shuffle read");
+        h.append("</tr></thead><tbody>");
+        for (QueueAnalysisResult.TemplateStat t : r.templateStats()) {
+            h.append("<tr>");
+            td(h, esc(t.templateHash()));
+            td(h, statementLink(t.exampleStatementId()));
+            td(h, String.valueOf(t.queryCount()));
+            td(h, duration(t.totalDurationMs()));
+            td(h, String.valueOf(t.totalCoreMs()));
+            td(h, bytes(t.totalInputBytes()));
+            td(h, bytes(t.totalShuffleReadBytes()));
+            h.append("</tr>");
+        }
+        h.append("</tbody></table></section>");
     }
 
     private void recommendations(StringBuilder h, QueueAnalysisResult r, ReportLanguage language) {

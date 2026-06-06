@@ -69,6 +69,7 @@ public final class QueueAggregator {
                 contentionReport(completed, contention),
                 topSlowQueries(completed, contention, topN),
                 sampledQueries(completed, contention),
+                templateStats(completed, contention),
                 Java8Collections.<QueueAnalysisResult.QueueRecommendation>listOf(),
                 null,
                 meta(app, sourcePath, topN, samples, context));
@@ -355,6 +356,29 @@ public final class QueueAggregator {
                 .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new)));
     }
 
+    private List<QueueAnalysisResult.TemplateStat> templateStats(List<QuerySample> completed,
+                                                                 ContentionTimeline contention) {
+        Map<String, TemplateAccumulator> byTemplate = new LinkedHashMap<String, TemplateAccumulator>();
+        for (QuerySample q : completed) {
+            String rawTemplateHash = q.templateHash();
+            final String templateHash = Strings.isBlank(rawTemplateHash)
+                    ? "execution-" + q.executionId()
+                    : rawTemplateHash;
+            TemplateAccumulator acc = byTemplate.computeIfAbsent(templateHash,
+                    ignored -> new TemplateAccumulator(templateHash, q.statementId()));
+            ContentionTimeline.QueryContention c = contention.queryContention()
+                    .getOrDefault(q.executionId(), emptyContention(q.executionId()));
+            long coreMs = c.ownCoreMs() > 0L ? c.ownCoreMs() : q.totalTaskTimeMs();
+            acc.add(q.durationMs(), coreMs, q.inputBytes(), q.shuffleReadBytes());
+        }
+        return Java8Collections.listCopy(byTemplate.values().stream()
+                .sorted(Comparator.comparingLong(TemplateAccumulator::totalCoreMs).reversed()
+                        .thenComparing(Comparator.comparingLong(TemplateAccumulator::totalDurationMs).reversed()))
+                .limit(20)
+                .map(TemplateAccumulator::toStat)
+                .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new)));
+    }
+
     private QueueAnalysisResult.SlowQueryRef slowRef(QuerySample q, ContentionTimeline contention) {
         ContentionTimeline.QueryContention c = contention.queryContention()
                 .getOrDefault(q.executionId(), emptyContention(q.executionId()));
@@ -538,6 +562,42 @@ public final class QueueAggregator {
         RuleSignal(String ruleId, String category) {
             this.ruleId = ruleId;
             this.category = category;
+        }
+    }
+
+    private static final class TemplateAccumulator {
+        final String templateHash;
+        final String exampleStatementId;
+        int queryCount;
+        long totalDurationMs;
+        long totalCoreMs;
+        long totalInputBytes;
+        long totalShuffleReadBytes;
+
+        TemplateAccumulator(String templateHash, String exampleStatementId) {
+            this.templateHash = templateHash;
+            this.exampleStatementId = exampleStatementId;
+        }
+
+        void add(long durationMs, long coreMs, long inputBytes, long shuffleReadBytes) {
+            queryCount++;
+            totalDurationMs += Math.max(0L, durationMs);
+            totalCoreMs += Math.max(0L, coreMs);
+            totalInputBytes += Math.max(0L, inputBytes);
+            totalShuffleReadBytes += Math.max(0L, shuffleReadBytes);
+        }
+
+        long totalCoreMs() {
+            return totalCoreMs;
+        }
+
+        long totalDurationMs() {
+            return totalDurationMs;
+        }
+
+        QueueAnalysisResult.TemplateStat toStat() {
+            return new QueueAnalysisResult.TemplateStat(templateHash, exampleStatementId, queryCount,
+                    totalDurationMs, totalCoreMs, totalInputBytes, totalShuffleReadBytes);
         }
     }
 }

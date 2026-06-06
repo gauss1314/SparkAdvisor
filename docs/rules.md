@@ -9,7 +9,7 @@
 SparkAdvisor 的规则分为两层：
 
 - **单 SQL 规则（R1-R11）**：面向一条 SQL 的 stage/task/plan 证据，产出 `AnalysisResult.findings`，用于单条 SQL 下钻诊断。
-- **队列级规则（Q1-Q11）**：面向一个长驻 Spark Application / 查询队列的一整轮 SQL 聚合证据，产出 `QueueAnalysisResult.globalRecommendations`，用于判断固定资源池的资源使用、查询频率、耗时分布、争用、全局参数失配和机制类优化机会。
+- **队列级规则（Q1-Q15）**：面向一个长驻 Spark Application / 查询队列的一整轮 SQL 聚合证据，产出 `QueueAnalysisResult.globalRecommendations`，用于判断固定资源池的资源使用、查询频率、耗时分布、争用、全局参数失配、机制类优化机会和高频模板总成本。
 
 单 SQL 规则按证据类型又分为两类：
 
@@ -355,7 +355,7 @@ R9 需要多 executor 或真实远端 shuffle 场景才有代表性。全本地�
 
 不要把 R11 当作确定归因。它的价值是给二次核对提供方向，而不是替代 SQL tab 的算子级指标。
 
-## 队列级规则总览（Q1-Q11）
+## 队列级规则总览（Q1-Q15）
 
 队列级规则由 `sparkadvisor-monitor` 的 `QueueRuleEngine` 生成，输入是 `QueueAnalysisResult`，不是单条 SQL 的 `AnalysisResult`。它回答的问题是：
 
@@ -381,6 +381,7 @@ Q 规则只依赖 `QueueAnalysisResult`，核心字段如下：
 | `contention.contentionLimitedPct/inefficientBusyPct` | 争用受限与低效忙碌查询占比 | 区分资源不足和阻塞低效 |
 | `contention.hotspots/starvationWindows/topResourceHogs` | 高占用窗口、饥饿窗口、资源大户 | 分池、限流、隔离建议 |
 | `bottlenecks[].ruleId/affectedQueries/affectedPct/sampleCoveragePct/scope` | 重复单 SQL 瓶颈，`scope` 可为 `FULL_QUEUE_LIGHT`、`DEEP_SAMPLE` 或 `FULL_QUEUE_LIGHT+DEEP_SAMPLE` | 把 R 规则升级为队列级证据；能用轻特征判断的资源类规则按全量 SQL 分母统计 |
+| `templateStats[].templateHash/queryCount/totalDurationMs/totalCoreMs/totalInputBytes/totalShuffleReadBytes` | 按 SQL 模板聚合的频率和总成本 | 识别高频中等慢模板、重复大扫描和缓存/物化机会 |
 | `topSlowQueries/sampledQueries` | 最慢 SQL 与分层抽样 SQL | 下钻、校验抽样代表性 |
 | `meta.lightAnalyzedQueries/deepAnalyzedQueries/deepCoveragePct/samplingStrategy/degradedReason` | 分析覆盖率与降级原因 | 置信度与 caveat |
 
@@ -724,6 +725,120 @@ Event log 对 pool/share 信息有限，公平性归因必须结合 scheduler �
 
 Q11 是机制 checklist，不是确定根因。置信度通常为 `LOW`，除非有 operator metric 或外部系统指标补强。
 
+## Q12_SCHEDULING_COLD_START_OR_POOL_DELAY：调度冷启动/池等待
+
+命中条件：
+
+- `R8_SCHEDULING_DELAY` 在队列级 `bottlenecks` 中达到 common 阈值。
+- 该证据可来自全量轻特征，分母为完成 SQL 数。
+
+证据字段：
+
+- `bottlenecks[ruleId=R8_SCHEDULING_DELAY]`
+- `bottlenecks[].scope`
+- `meta.assumptions`
+
+诊断含义：
+
+多条 SQL 在 Stage submission 到 first task launch 之间出现明显间隔。它可能来自 dynamic allocation 冷启动、资源获取延迟、FIFO head-of-line blocking、FAIR pool minShare/weight 配置不合理，或调度器/集群压力。
+
+建议动作：
+
+- 对短查询/突发查询评估预热或保底 executor，例如提高 `spark.dynamicAllocation.minExecutors`，或在队列入口保留基础资源。
+- 核对 scheduler mode、FAIR pool、`minShare`、`weight` 与长短查询隔离。
+- 与 Q4/Q9 联动判断是容量不足、池内饥饿，还是 executor 冷启动。
+
+注意事项：
+
+Event log 没有直接记录 SQL 排队时间。当前证据是派生指标 `firstTaskLaunchTime - stageSubmissionTime`，因此配置建议通常为 `MEDIUM` 置信度。
+
+## Q13_QUEUE_RETRY_OR_SPECULATION_NOISE：失败/推测执行噪声
+
+命中条件：
+
+- `R10_TASK_RETRY` 在队列级 `bottlenecks` 中达到 common 阈值。
+- 或 `resources.failedAttemptRatio` / `resources.speculativeAttemptRatio` 超过队列级 attempt 阈值。
+
+证据字段：
+
+- `bottlenecks[ruleId=R10_TASK_RETRY]`
+- `resources.failedAttemptRatio`
+- `resources.speculativeAttemptRatio`
+- `timeline[].failedAttemptRatio/speculativeAttemptRatio`
+
+诊断含义：
+
+队列里反复出现 failed attempt 或 speculative/extra attempt。它会放大 wall clock、污染资源利用率和长尾判断，使分区数、容量或 join 策略建议看起来比真实情况更差。
+
+建议动作：
+
+- 先区分 failed retries 与 speculation duplicate attempts：查看 `TaskEndReason`、executor/container 日志、节点健康和 `spark.speculation` 设置。
+- 若失败集中在大分区或 spill/GC 查询，再回到 R1/R2/R6/R9 处理根因。
+- 若失败集中在少数 executor/host，应优先平台侧隔离或修复，而不是调整 SQL 参数。
+
+注意事项：
+
+推测执行本身不一定是坏事；它可能是在补偿长尾。规则只提示“attempt 噪声会影响队列判断”，不是要求关闭 speculation。
+
+## Q14_HIGH_FREQUENCY_TEMPLATE_COST：高频模板总成本
+
+命中条件：
+
+- `templateStats[].queryCount` 达到高频模板最小次数。
+- 且该模板的出现占比、总 core-ms 占比或总耗时占比达到队列级阈值。
+
+证据字段：
+
+- `templateStats[].templateHash`
+- `templateStats[].queryCount`
+- `templateStats[].totalDurationMs`
+- `templateStats[].totalCoreMs`
+- `templateStats[].totalInputBytes`
+- `templateStats[].totalShuffleReadBytes`
+
+诊断含义：
+
+队列总成本不一定由最慢单条 SQL 决定。一个“中等慢但高频”的模板可能比单条最慢 SQL 消耗更多 executor core-ms，并决定整体队列吞吐。
+
+建议动作：
+
+- 按 `templateHash` 优先治理总成本最高的模板，而不是只看 `topSlowQueries`。
+- 对高频模板建立专项下钻：固定输入规模、参数分布、计划差异、AQE 最终计划、缓存/物化可能性。
+- 若模板对应业务入口可控，评估 admission control、结果复用、限频或批处理合并。
+
+注意事项：
+
+`templateHash` 来自 SQL 文本归一化。应用统一建议前，需要确认这些 SQL 在语义、输入范围和参数选择性上确实可比较。
+
+## Q15_REPEATED_LARGE_SCAN_CACHE_OR_MATERIALIZE：重复大扫描/缓存物化机会
+
+命中条件：
+
+- 同一 `templateHash` 重复执行达到高频模板最小次数。
+- 且累计 `totalInputBytes` 超过重复扫描阈值。
+
+证据字段：
+
+- `templateStats[].templateHash`
+- `templateStats[].queryCount`
+- `templateStats[].totalInputBytes`
+- `templateStats[].totalShuffleReadBytes`
+- `sampledQueries[].templateHash`
+
+诊断含义：
+
+同一模板反复扫描大量输入，说明重复读取可能是队列总成本的重要来源。此时缓存、物化中间结果、预聚合或结果复用可能比逐条 SQL 微调更有效。
+
+建议动作：
+
+- 对同模板高频查询核对数据源、分区过滤、时间窗口和 freshness 要求。
+- 在内存预算允许且命中率稳定时，评估 `CACHE TABLE` / DataFrame cache、物化视图、中间表或上游预聚合。
+- 若缓存不可行，优先减少重复扫描：分区裁剪、列裁剪、数据布局、批量合并请求。
+
+注意事项：
+
+缓存/物化会引入内存占用、过期一致性和 eviction 风险。当前规则没有 operator-level cache 命中证据，因此默认 `LOW` 置信度。
+
 ## 队列级调参选项矩阵
 
 | 观察到的队列证据 | 优先调优方向 | 可评估参数/机制 | 不建议的误用 |
@@ -736,15 +851,17 @@ Q11 是机制 checklist，不是确定根因。置信度通常为 `LOW`，除非
 | 多 SQL join 策略可疑 | stats/CBO/AQE join 治理 | `ANALYZE TABLE`、CBO、auto/adaptive broadcast threshold、broadcast hint、AQE join conversion | 全局大幅调高 broadcast 阈值 |
 | 多 SQL fetch wait | Shuffle/网络/分区治理 | 减少 shuffle 数据量、reducer 分区大小、shuffle service、`spark.reducer.*` fetch 参数 | 只加 executor |
 | 多 SQL GC | 代码路径和内存治理 | UDF/object churn、cache 布局、过滤裁剪、executor memory/GC 参数 | 只加 heap 且不改对象分配 |
+| 多 SQL `R8_SCHEDULING_DELAY` | 资源预热与调度池治理 | dynamic allocation `minExecutors`、executor idle timeout、FAIR pool、长短查询隔离 | 直接加 `shuffle.partitions` |
+| 多 SQL `R10_TASK_RETRY` 或 attempt ratio 高 | 可靠性治理 | TaskEndReason、executor/container 健康、speculation 设置、坏节点隔离 | 把失败重试误当成正常长尾 |
+| 高频模板总 core-ms 高 | 模板级治理 | 模板下钻、结果复用、admission control、限频、批处理合并 | 只优化单条最慢 SQL |
+| 同模板重复大扫描 | 缓存/物化/预聚合 | `CACHE TABLE`、物化视图、中间表、分区/列裁剪 | 不核对 freshness 和内存就缓存 |
 
 ## 待补规则方向
 
-当前 R1-R11 已覆盖主要单 SQL 运行时症状与部分物理计划机会；Q1-Q11 覆盖了队列级资源利用、争用、频率/时长趋势和全局参数建议。但仍有一些 Spark SQL 优化前提值得后续补入规则库：
+当前 R1-R11 已覆盖主要单 SQL 运行时症状与部分物理计划机会；Q1-Q15 覆盖了队列级资源利用、争用、频率/时长趋势、全局参数建议、调度冷启动、attempt 噪声、高频模板总成本和重复大扫描。但仍有一些 Spark SQL 优化前提需要补充更强证据后再进入规则库：
 
-- **统计信息与 CBO 置信度**：当 join 相关规则命中但缺少可靠 `sizeInBytes` / catalog stats / runtime stats 时，应先建议补齐 `ANALYZE TABLE` 或 catalog stats，再调 broadcast 阈值。
-- **Shuffled Hash Join 机会**：Spark 3.2+ AQE 可在 post-shuffle partitions 足够小时把 SMJ 转成 SHJ，相关参数包括 `spark.sql.adaptive.maxShuffledHashJoinLocalMapThreshold`。
-- **动态分区裁剪与运行时过滤**：分区表 join + 选择性过滤场景下，若 DPP/runtime filter 未生效，可能本应在更上游减少扫描与 shuffle。
-- **写侧文件尺寸与 REBALANCE**：R5 覆盖读侧小文件，但写出端若产生大量小文件或偏斜大文件，应单独提示 `REBALANCE`、repartition 或 compaction。
-- **队列级模板频率与总成本**：高频中等慢模板可能比单条最慢 SQL 更消耗总资源，应在 Q 规则中显式纳入 `templateHash` 的出现次数、总耗时和总 core-ms。
-- **调度池证据增强**：当前 Q9 主要基于 task interval 推断饥饿；若后续能稳定抽取 FAIR pool、minShare、weight 与 pool 切换信息，应把公平性规则从 MEDIUM/LOW 置信度提升为更可操作的配置建议。
-- **写入端队列治理**：队列级小文件治理目前主要沿用 R5 读侧证据；后续应补充写出文件数、文件大小分布和 downstream read amplification 的闭环规则。
+- **统计信息与 CBO 证据增强**：Q10 已建议先补统计信息再调 broadcast 阈值；后续应从 plan/runtime stats 中显式抽取 `sizeInBytes`、catalog stats、runtime row/byte stats 与 `EXPLAIN COST` 证据，用于提升置信度。
+- **Shuffled Hash Join 机会增强**：Q11 已把 SHJ conversion 纳入机制 checklist；后续若能抽取 post-shuffle partition size 与 AQE final plan，可单独判断 `spark.sql.adaptive.maxShuffledHashJoinLocalMapThreshold` 是否值得调整。
+- **动态分区裁剪与运行时过滤证据**：分区表 join + 选择性过滤场景下，若能识别 `DynamicPruningSubquery`、runtime bloom filter、pushed filters 和扫描削减比例，可把 Q11 的 LOW checklist 升级为可执行规则。
+- **写侧文件尺寸与 REBALANCE 闭环**：R5/Q7 覆盖读侧小文件；后续应补充写出文件数、文件大小分布、偏斜输出文件和 downstream read amplification，再建议 `REBALANCE`、写侧 repartition 或 compaction。
+- **调度池证据增强**：当前 Q9/Q12 主要基于 task interval 和 stage pre-launch gap 推断；若后续能稳定抽取 FAIR pool、minShare、weight 与 pool 切换信息，应把公平性/冷启动规则从 MEDIUM/LOW 置信度提升为更可操作的配置建议。

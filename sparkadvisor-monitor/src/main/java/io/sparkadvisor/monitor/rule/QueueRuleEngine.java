@@ -167,7 +167,7 @@ public final class QueueRuleEngine {
         List<QueueAnalysisResult.BottleneckCluster> mechanismClusters = mechanismClusters(result);
         if (!mechanismClusters.isEmpty()) {
             recs.add(rec("Q11_QUEUE_EXECUTION_MECHANISM_GAPS",
-                    Recommendation.sql("Audit pushdown/vectorization/DPP/runtime filters/AQE join conversion on repeated slow templates",
+                    Recommendation.sql("Audit pushdown/vectorization/DPP/runtime filters/AQE join conversion and SHJ conversion on repeated slow templates",
                             "Repeated plan and shuffle symptoms suggest mechanism-level opportunities that cannot be solved by one generic capacity knob.",
                             "Expected to convert queue advice from symptoms into plan fixes."),
                     mechanismEvidence(mechanismClusters),
@@ -175,6 +175,62 @@ public final class QueueRuleEngine {
                     "Applies to repeated templates represented in the queue evidence.",
                     caveat(result, mechanismClusters.toArray(new QueueAnalysisResult.BottleneckCluster[0]))
                             + " This is a mechanism checklist; confirm with SQL UI operator metrics and final adaptive plans."));
+        }
+
+        cluster(result, "R8_SCHEDULING_DELAY").ifPresent(c -> {
+            if (common(c, result)) {
+                recs.add(rec("Q12_SCHEDULING_COLD_START_OR_POOL_DELAY",
+                        Recommendation.conf("Check dynamic allocation warm-up, scheduler pools, and pre-allocated minimum executors",
+                                "Repeated stage pre-launch gaps mean SQLs are spending time before tasks start; this may be executor cold start, FIFO/FAIR pool delay, or resource acquisition latency.",
+                                "Expected to improve latency for short and bursty queries."),
+                        evidence(c),
+                        Confidence.MEDIUM,
+                        coverage(c, completed),
+                        caveat(result, c)
+                                + " Event logs expose this as firstTaskLaunch - stageSubmission, not a direct queue-wait metric."));
+            }
+        });
+
+        Optional<QueueAnalysisResult.BottleneckCluster> retryCluster = cluster(result, "R10_TASK_RETRY");
+        boolean highAttempts = result.resources().failedAttemptRatio() >= thresholds.highAttemptRatio()
+                || result.resources().speculativeAttemptRatio() >= thresholds.highAttemptRatio();
+        if ((retryCluster.isPresent() && common(retryCluster.get(), result)) || highAttempts) {
+            String evidence = retryCluster.isPresent()
+                    ? evidence(retryCluster.get())
+                    : "failedAttemptRatio=" + pct(result.resources().failedAttemptRatio())
+                    + ", speculativeAttemptRatio=" + pct(result.resources().speculativeAttemptRatio());
+            recs.add(rec("Q13_QUEUE_RETRY_OR_SPECULATION_NOISE",
+                    Recommendation.conf("Separate failed retries from speculative duplicate attempts before tuning partitions or capacity",
+                            "Repeated attempts add wall-clock noise and can make resource or partition advice look worse than the underlying plan.",
+                            "Expected to stabilize the queue and make later SQL tuning evidence trustworthy."),
+                    evidence,
+                    Confidence.MEDIUM,
+                    "Applies to queue-level reliability decisions.",
+                    "Inspect TaskEndReason, executor/container health, speculation settings, and noisy hosts before changing SQL knobs."));
+        }
+
+        QueueAnalysisResult.TemplateStat hotTemplate = highFrequencyTemplate(result);
+        if (hotTemplate != null) {
+            recs.add(rec("Q14_HIGH_FREQUENCY_TEMPLATE_COST",
+                    Recommendation.sql("Prioritize the repeated template by total cost, not only the single slowest execution",
+                            "A moderately slow SQL template can dominate queue cost when it runs frequently.",
+                            "Expected to reduce aggregate queue load and tail latency if the template is reusable."),
+                    templateEvidence(hotTemplate, result),
+                    Confidence.MEDIUM,
+                    "Targets a repeated template represented by templateHash=" + hotTemplate.templateHash() + ".",
+                    "Template hash is normalized from SQL text; verify that executions are semantically comparable before applying one fix."));
+        }
+
+        QueueAnalysisResult.TemplateStat repeatedScan = repeatedLargeScanTemplate(result);
+        if (repeatedScan != null) {
+            recs.add(rec("Q15_REPEATED_LARGE_SCAN_CACHE_OR_MATERIALIZE",
+                    Recommendation.sql("Evaluate cache, materialized intermediate results, or upstream aggregation for the repeated large-scan template",
+                            "The same template repeatedly scans substantial input; reusing hot intermediates may beat per-query micro-tuning.",
+                            "Expected to reduce repeated scan and shuffle work when data freshness and memory budget allow it."),
+                    templateEvidence(repeatedScan, result),
+                    Confidence.LOW,
+                    "Applies only when the repeated template reads the same logical data slice.",
+                    "Confirm table/path identity, freshness requirements, cache capacity, and eviction risk before enabling cache or materialization."));
         }
 
         return recs;
@@ -205,6 +261,57 @@ public final class QueueRuleEngine {
         return clusters;
     }
 
+    private QueueAnalysisResult.TemplateStat highFrequencyTemplate(QueueAnalysisResult result) {
+        QueueAnalysisResult.TemplateStat best = null;
+        long totalCoreMs = totalTemplateCoreMs(result);
+        long totalDurationMs = totalTemplateDurationMs(result);
+        for (QueueAnalysisResult.TemplateStat stat : result.templateStats()) {
+            if (stat.queryCount() < thresholds.highFrequencyTemplateMinQueries()) {
+                continue;
+            }
+            double countPct = result.summary().completedQueries() <= 0 ? 0.0
+                    : (double) stat.queryCount() / (double) result.summary().completedQueries();
+            double corePct = totalCoreMs <= 0L ? 0.0 : (double) stat.totalCoreMs() / (double) totalCoreMs;
+            double durationPct = totalDurationMs <= 0L ? 0.0
+                    : (double) stat.totalDurationMs() / (double) totalDurationMs;
+            boolean trips = countPct >= thresholds.highFrequencyTemplatePct()
+                    || corePct >= thresholds.highFrequencyTemplateCostPct()
+                    || durationPct >= thresholds.highFrequencyTemplateCostPct();
+            if (trips && (best == null || stat.totalCoreMs() > best.totalCoreMs())) {
+                best = stat;
+            }
+        }
+        return best;
+    }
+
+    private QueueAnalysisResult.TemplateStat repeatedLargeScanTemplate(QueueAnalysisResult result) {
+        QueueAnalysisResult.TemplateStat best = null;
+        for (QueueAnalysisResult.TemplateStat stat : result.templateStats()) {
+            if (stat.queryCount() >= thresholds.highFrequencyTemplateMinQueries()
+                    && stat.totalInputBytes() >= thresholds.repeatedScanInputBytes()
+                    && (best == null || stat.totalInputBytes() > best.totalInputBytes())) {
+                best = stat;
+            }
+        }
+        return best;
+    }
+
+    private long totalTemplateCoreMs(QueueAnalysisResult result) {
+        long total = 0L;
+        for (QueueAnalysisResult.TemplateStat stat : result.templateStats()) {
+            total += stat.totalCoreMs();
+        }
+        return total;
+    }
+
+    private long totalTemplateDurationMs(QueueAnalysisResult result) {
+        long total = 0L;
+        for (QueueAnalysisResult.TemplateStat stat : result.templateStats()) {
+            total += stat.totalDurationMs();
+        }
+        return total;
+    }
+
     private QueueAnalysisResult.QueueRecommendation rec(String id, Recommendation recommendation,
                                                         String evidence, Confidence confidence,
                                                         String expectedCoverage) {
@@ -231,6 +338,22 @@ public final class QueueRuleEngine {
             parts.add(evidence(cluster));
         }
         return String.join("; ", parts);
+    }
+
+    private String templateEvidence(QueueAnalysisResult.TemplateStat stat, QueueAnalysisResult result) {
+        double countPct = result.summary().completedQueries() <= 0 ? 0.0
+                : (double) stat.queryCount() / (double) result.summary().completedQueries();
+        double corePct = totalTemplateCoreMs(result) <= 0L ? 0.0
+                : (double) stat.totalCoreMs() / (double) totalTemplateCoreMs(result);
+        return "templateHash=" + stat.templateHash()
+                + ", exampleStatementId=" + stat.exampleStatementId()
+                + ", queryCount=" + stat.queryCount()
+                + " (" + pct(countPct) + ")"
+                + ", totalDurationMs=" + stat.totalDurationMs()
+                + ", totalCoreMs=" + stat.totalCoreMs()
+                + " (" + pct(corePct) + " of tracked template core-ms)"
+                + ", totalInputBytes=" + stat.totalInputBytes()
+                + ", totalShuffleReadBytes=" + stat.totalShuffleReadBytes();
     }
 
     private String coverage(QueueAnalysisResult.BottleneckCluster c, int completed) {

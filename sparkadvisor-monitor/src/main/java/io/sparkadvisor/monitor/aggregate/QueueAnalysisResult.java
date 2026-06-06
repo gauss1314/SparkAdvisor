@@ -17,6 +17,7 @@ public final class QueueAnalysisResult {
     private final ContentionReport contention;
     private final List<SlowQueryRef> topSlowQueries;
     private final List<SlowQueryRef> sampledQueries;
+    private final List<TemplateStat> templateStats;
     private final List<QueueRecommendation> globalRecommendations;
     private final AnalysisResult.AiAdvice aiAdvice;
     private final Meta meta;
@@ -28,7 +29,8 @@ public final class QueueAnalysisResult {
                                List<QueueRecommendation> globalRecommendations,
                                AnalysisResult.AiAdvice aiAdvice, Meta meta) {
         this(summary, timeline, bottlenecks, utilization, resources, contention, topSlowQueries,
-                Java8Collections.<SlowQueryRef>listOf(), globalRecommendations, aiAdvice, meta);
+                Java8Collections.<SlowQueryRef>listOf(), Java8Collections.<TemplateStat>listOf(),
+                globalRecommendations, aiAdvice, meta);
     }
 
     public QueueAnalysisResult(QueueSummary summary, List<HourBucketStat> timeline,
@@ -36,6 +38,16 @@ public final class QueueAnalysisResult {
                                ResourceMetrics resources, ContentionReport contention,
                                List<SlowQueryRef> topSlowQueries, List<SlowQueryRef> sampledQueries,
                                List<QueueRecommendation> globalRecommendations,
+                               AnalysisResult.AiAdvice aiAdvice, Meta meta) {
+        this(summary, timeline, bottlenecks, utilization, resources, contention, topSlowQueries,
+                sampledQueries, Java8Collections.<TemplateStat>listOf(), globalRecommendations, aiAdvice, meta);
+    }
+
+    public QueueAnalysisResult(QueueSummary summary, List<HourBucketStat> timeline,
+                               List<BottleneckCluster> bottlenecks, UtilizationSeries utilization,
+                               ResourceMetrics resources, ContentionReport contention,
+                               List<SlowQueryRef> topSlowQueries, List<SlowQueryRef> sampledQueries,
+                               List<TemplateStat> templateStats, List<QueueRecommendation> globalRecommendations,
                                AnalysisResult.AiAdvice aiAdvice, Meta meta) {
         this.summary = summary;
         this.timeline = Java8Collections.listCopy(timeline);
@@ -45,6 +57,7 @@ public final class QueueAnalysisResult {
         this.contention = contention;
         this.topSlowQueries = Java8Collections.listCopy(topSlowQueries);
         this.sampledQueries = Java8Collections.listCopy(sampledQueries);
+        this.templateStats = Java8Collections.listCopy(templateStats);
         this.globalRecommendations = Java8Collections.listCopy(globalRecommendations);
         this.aiAdvice = aiAdvice;
         this.meta = meta;
@@ -54,6 +67,7 @@ public final class QueueAnalysisResult {
     public List<BottleneckCluster> bottlenecks(){return bottlenecks;} public UtilizationSeries utilization(){return utilization;}
     public ResourceMetrics resources(){return resources;} public ContentionReport contention(){return contention;}
     public List<SlowQueryRef> topSlowQueries(){return topSlowQueries;} public List<SlowQueryRef> sampledQueries(){return sampledQueries;}
+    public List<TemplateStat> templateStats(){return templateStats;}
     public List<QueueRecommendation> globalRecommendations(){return globalRecommendations;}
     public AnalysisResult.AiAdvice aiAdvice(){return aiAdvice;} public Meta meta(){return meta;}
     @Override public boolean equals(Object o){return ValueObjects.equalFields(this,o);}
@@ -62,12 +76,12 @@ public final class QueueAnalysisResult {
 
     public QueueAnalysisResult withRecommendations(List<QueueRecommendation> recommendations) {
         return new QueueAnalysisResult(summary, timeline, bottlenecks, utilization, resources, contention,
-                topSlowQueries, sampledQueries, recommendations, aiAdvice, meta);
+                topSlowQueries, sampledQueries, templateStats, recommendations, aiAdvice, meta);
     }
 
     public QueueAnalysisResult withAiAdvice(AnalysisResult.AiAdvice advice) {
         return new QueueAnalysisResult(summary, timeline, bottlenecks, utilization, resources, contention,
-                topSlowQueries, sampledQueries, globalRecommendations, advice, meta);
+                topSlowQueries, sampledQueries, templateStats, globalRecommendations, advice, meta);
     }
 
     public static final class QueueSummary {
@@ -127,6 +141,10 @@ public final class QueueAnalysisResult {
         public SlowQueryRef(String statementId,long executionId,long startTime,long endTime,long durationMs,String dominantBottleneck,boolean contentionLimited,long ownCoreMs){this(statementId,null,executionId,startTime,endTime,durationMs,dominantBottleneck,contentionLimited,ownCoreMs,false);}
         public SlowQueryRef(String statementId,String templateHash,long executionId,long startTime,long endTime,long durationMs,String dominantBottleneck,boolean contentionLimited,long ownCoreMs,boolean deepAnalyzed){this.statementId=statementId;this.templateHash=templateHash;this.executionId=executionId;this.startTime=startTime;this.endTime=endTime;this.durationMs=durationMs;this.dominantBottleneck=dominantBottleneck;this.contentionLimited=contentionLimited;this.ownCoreMs=ownCoreMs;this.deepAnalyzed=deepAnalyzed;}
         public String statementId(){return statementId;} public String templateHash(){return templateHash;} public long executionId(){return executionId;} public long startTime(){return startTime;} public long endTime(){return endTime;} public long durationMs(){return durationMs;} public String dominantBottleneck(){return dominantBottleneck;} public boolean contentionLimited(){return contentionLimited;} public long ownCoreMs(){return ownCoreMs;} public boolean deepAnalyzed(){return deepAnalyzed;} @Override public boolean equals(Object o){return ValueObjects.equalFields(this,o);} @Override public int hashCode(){return ValueObjects.hashFields(this);} @Override public String toString(){return ValueObjects.toString(this);}}
+
+    public static final class TemplateStat { private final String templateHash,exampleStatementId; private final int queryCount; private final long totalDurationMs,totalCoreMs,totalInputBytes,totalShuffleReadBytes;
+        public TemplateStat(String templateHash,String exampleStatementId,int queryCount,long totalDurationMs,long totalCoreMs,long totalInputBytes,long totalShuffleReadBytes){this.templateHash=templateHash;this.exampleStatementId=exampleStatementId;this.queryCount=queryCount;this.totalDurationMs=totalDurationMs;this.totalCoreMs=totalCoreMs;this.totalInputBytes=totalInputBytes;this.totalShuffleReadBytes=totalShuffleReadBytes;}
+        public String templateHash(){return templateHash;} public String exampleStatementId(){return exampleStatementId;} public int queryCount(){return queryCount;} public long totalDurationMs(){return totalDurationMs;} public long totalCoreMs(){return totalCoreMs;} public long totalInputBytes(){return totalInputBytes;} public long totalShuffleReadBytes(){return totalShuffleReadBytes;} @Override public boolean equals(Object o){return ValueObjects.equalFields(this,o);} @Override public int hashCode(){return ValueObjects.hashFields(this);} @Override public String toString(){return ValueObjects.toString(this);}}
 
     public static final class QueueRecommendation { private final String queueRuleId,evidence,expectedCoverage,caveats; private final Recommendation recommendation; private final Confidence confidence;
         public QueueRecommendation(String queueRuleId,Recommendation recommendation,String evidence,Confidence confidence,String expectedCoverage){this(queueRuleId,recommendation,evidence,confidence,expectedCoverage,"");}

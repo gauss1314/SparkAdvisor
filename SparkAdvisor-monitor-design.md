@@ -536,7 +536,7 @@ flowchart LR
 | 里程碑 | 交付 | 验收 |
 | --- | --- | --- |
 | Q-M1 | `monitor` 核心：收集 `QuerySample` + 全量轻特征 + `QueueAggregator`（延迟分位/瓶颈聚类/趋势）+ `QueueAnalysisResult` + CLI `queue-report` 出 JSON/HTML | 对一份多 SQL 样本日志，分位数/聚类与人工核算一致；轻/深分析覆盖率正确 |
-| Q-M2 | `ContentionTimeline` 多维资源归因 + `QueueRuleEngine` 全局建议（Q1–Q11）+ HTML 队列版面 | 能区分资源争用受限、fetch/GC/attempt 阻塞受限、自身计划瓶颈；全局建议带证据/置信度/caveats |
+| Q-M2 | `ContentionTimeline` 多维资源归因 + `QueueRuleEngine` 全局建议（Q1–Q15）+ HTML 队列版面 | 能区分资源争用受限、fetch/GC/attempt 阻塞受限、自身计划瓶颈；全局建议带证据/置信度/caveats |
 | Q-M3 | SHS tab 队列模式：`.inprogress` 读取 + 异步单飞 + 有界缓存 + 运行中标注；CLI 与 Tab 复用同引擎 | 运行中 app 打开 tab 不阻塞；解析失败不影响 SHS 其它 app；降级状态可见 |
 | Q-M3.5 | rolling event log 增量 checkpoint + SHS fast path 读取离线产物 | rolling part 追加/切换时增量结果与全量重放一致；10GB 运行中 app 不因每次增长重复全量回放 |
 | Q-M4 | F4 队列级 LLM 顾问（脱敏 `QueueAnalysisResult` JSON 喂模型） | LLM 仅消费结构化脱敏结果；规则版与 LLM 版可切换；LLM 失败优雅降级 |
@@ -559,7 +559,7 @@ sparkadvisor-monitor/
     ├── contention/ContentionTimeline.java  # slot/CPU/fetch/GC/attempt 归因
     ├── aggregate/QueueAggregator.java      # 分位/聚类/趋势/效率/公平性
     ├── aggregate/QueueAnalysisResult.java  # 队列级契约 + 子 value type
-    ├── rule/QueueRuleEngine.java           # Q1–Q11
+    ├── rule/QueueRuleEngine.java           # Q1–Q15
     ├── rule/QueueRuleThresholds.java
     ├── security/QueueRedactor.java         # SQL/路径/conf/JSON/LLM prompt 脱敏
     └── render/QueueHtmlWriter.java         # 复用 report 样式/基建

@@ -51,6 +51,14 @@ class QueueAnalyzerTest {
     private static Stage stageWithStats(int id, int tasks, long submit, long firstLaunch, long complete,
                                         Distribution durations, Distribution shuffleRead,
                                         Distribution input, Distribution spill, Distribution gc) {
+        return stageWithStats(id, tasks, submit, firstLaunch, complete, durations, shuffleRead,
+                input, spill, gc, 0, 0);
+    }
+
+    private static Stage stageWithStats(int id, int tasks, long submit, long firstLaunch, long complete,
+                                        Distribution durations, Distribution shuffleRead,
+                                        Distribution input, Distribution spill, Distribution gc,
+                                        int failedAttempts, int extraAttempts) {
         TaskMetricStats stats = new TaskMetricStats(
                 durations,
                 shuffleRead,
@@ -62,7 +70,7 @@ class QueueAnalyzerTest {
                 gc,
                 Distribution.EMPTY);
         return new Stage(id, 0, tasks, new java.util.ArrayList<>(), submit, firstLaunch, complete,
-                shuffleRead.sum(), 0L, stats);
+                shuffleRead.sum(), 0L, 0L, 0L, failedAttempts, extraAttempts, stats);
     }
 
     private static ApplicationModel queueApp() {
@@ -135,6 +143,59 @@ class QueueAnalyzerTest {
                 sqls, jobs, stages, new java.util.ArrayList<>(), new java.util.ArrayList<>());
     }
 
+    private static ApplicationModel repeatedLargeScanQueueApp() {
+        java.util.List<SqlExecution> sqls = new java.util.ArrayList<>();
+        java.util.List<Job> jobs = new java.util.ArrayList<>();
+        java.util.List<Stage> stages = new java.util.ArrayList<>();
+        long inputPerQuery = 256L * 1024L * 1024L;
+        for (int i = 1; i <= 3; i++) {
+            long start = i * 20_000L;
+            long end = start + 15_000L;
+            sqls.add(new SqlExecution(i, "scan-" + i,
+                    "/* scan_" + i + " */ select sum(v) from fact where ds = " + i,
+                    "Scan parquet fact", start, end, false,
+                    java.util.Arrays.asList((long) i)));
+            jobs.add(new Job(i, (long) i, java.util.Arrays.asList(i), start, end, false));
+            stages.add(stageWithStats(i, 64, start, start, end,
+                    new Distribution(64, 200L, 200L, 200L, 200L, 200L, 200L, 12_800L),
+                    Distribution.EMPTY,
+                    new Distribution(64, 4L * 1024L * 1024L, 4L * 1024L * 1024L,
+                            4L * 1024L * 1024L, 4L * 1024L * 1024L,
+                            4L * 1024L * 1024L, 4L * 1024L * 1024L, inputPerQuery),
+                    Distribution.EMPTY,
+                    Distribution.EMPTY));
+        }
+        Map<String, String> conf = new LinkedHashMap<>();
+        conf.put("spark.executor.instances", "2");
+        conf.put("spark.executor.cores", "2");
+        return new ApplicationModel("app-scan", "RepeatedScanQueue", 1L, 100_000L, false, conf,
+                sqls, jobs, stages, new java.util.ArrayList<>(), new java.util.ArrayList<>());
+    }
+
+    private static ApplicationModel schedulingAndAttemptQueueApp() {
+        java.util.List<SqlExecution> sqls = new java.util.ArrayList<>();
+        java.util.List<Job> jobs = new java.util.ArrayList<>();
+        java.util.List<Stage> stages = new java.util.ArrayList<>();
+        for (int i = 1; i <= 5; i++) {
+            long start = i * 15_000L;
+            long firstLaunch = start + 5_000L;
+            long end = start + 10_000L;
+            sqls.add(new SqlExecution(i, "retry-" + i,
+                    "/* retry_" + i + " */ select count(*) from unstable where id = " + i,
+                    "", start, end, false, java.util.Arrays.asList((long) i)));
+            jobs.add(new Job(i, (long) i, java.util.Arrays.asList(i), start, end, false));
+            stages.add(stageWithStats(i, 10, start, firstLaunch, end,
+                    new Distribution(10, 500L, 500L, 500L, 500L, 500L, 500L, 5_000L),
+                    Distribution.EMPTY, Distribution.EMPTY, Distribution.EMPTY, Distribution.EMPTY,
+                    1, 0));
+        }
+        Map<String, String> conf = new LinkedHashMap<>();
+        conf.put("spark.executor.instances", "1");
+        conf.put("spark.executor.cores", "2");
+        return new ApplicationModel("app-attempts", "SchedulingAttempts", 1L, 100_000L, false, conf,
+                sqls, jobs, stages, new java.util.ArrayList<>(), new java.util.ArrayList<>());
+    }
+
     @Test
     void buildsQueueContractWithContentionAndBottlenecks() {
         var result = new QueueAnalyzer().analyze(queueApp(), "synthetic", 2, 10_000L);
@@ -165,9 +226,11 @@ class QueueAnalyzerTest {
         assertTrue(html.contains("Global recommendations"));
         assertTrue(html.contains("<svg class=\"chart\""), "timeline chart should be inline SVG");
         assertTrue(html.contains("?statementId=big"), "slow-query rows should link to drilldown");
+        assertTrue(html.contains("Template cost"));
         assertTrue(json.contains("\"summary\""));
         assertTrue(json.contains("\"resources\""));
         assertTrue(json.contains("\"bottlenecks\""));
+        assertTrue(json.contains("\"templateStats\""));
         assertTrue(json.contains("\"deepCoveragePct\""));
         assertNotNull(result.meta().assumptions());
     }
@@ -186,6 +249,9 @@ class QueueAnalyzerTest {
         var result = new QueueAnalyzer().analyze(lightMetricQueueApp(), "synthetic-light", 1, 0, 60_000L);
 
         assertEquals(1, result.meta().deepAnalyzedQueries());
+        assertTrue(result.templateStats().stream()
+                        .anyMatch(t -> t.queryCount() == 5 && t.totalInputBytes() > 0L),
+                "template stats should aggregate repeated normalized SQL text");
         assertTrue(result.bottlenecks().stream()
                         .anyMatch(b -> b.ruleId().equals("R5_SMALL_FILES")
                                 && b.scope().contains("FULL_QUEUE")
@@ -196,6 +262,43 @@ class QueueAnalyzerTest {
                         .anyMatch(r -> r.queueRuleId().equals("Q7_COMMON_SMALL_FILES")
                                 && r.caveats().contains("Light metrics cover all completed SQL executions")),
                 "Q7 should trigger even though the small-file SQLs were not deep-analyzed");
+        assertTrue(result.globalRecommendations().stream()
+                        .anyMatch(r -> r.queueRuleId().equals("Q14_HIGH_FREQUENCY_TEMPLATE_COST")),
+                "Q14 should prioritize repeated template cost");
+    }
+
+    @Test
+    void queueRulesDetectRepeatedLargeScanTemplates() {
+        var result = new QueueAnalyzer().analyze(repeatedLargeScanQueueApp(), "synthetic-scan", 1, 0, 60_000L);
+
+        assertTrue(result.templateStats().stream()
+                        .anyMatch(t -> t.queryCount() == 3
+                                && t.totalInputBytes() >= 768L * 1024L * 1024L),
+                "template stats should retain repeated large scan input bytes");
+        assertTrue(result.globalRecommendations().stream()
+                        .anyMatch(r -> r.queueRuleId().equals("Q15_REPEATED_LARGE_SCAN_CACHE_OR_MATERIALIZE")),
+                "Q15 should trigger for repeated large scans");
+    }
+
+    @Test
+    void queueRulesDetectSchedulingDelayAndAttemptNoise() {
+        var result = new QueueAnalyzer().analyze(schedulingAndAttemptQueueApp(),
+                "synthetic-attempts", 1, 0, 60_000L);
+
+        assertTrue(result.bottlenecks().stream()
+                        .anyMatch(b -> b.ruleId().equals("R8_SCHEDULING_DELAY")
+                                && b.scope().contains("FULL_QUEUE")),
+                "R8 queue cluster should come from full light metrics");
+        assertTrue(result.bottlenecks().stream()
+                        .anyMatch(b -> b.ruleId().equals("R10_TASK_RETRY")
+                                && b.scope().contains("FULL_QUEUE")),
+                "R10 queue cluster should come from full light metrics");
+        assertTrue(result.globalRecommendations().stream()
+                        .anyMatch(r -> r.queueRuleId().equals("Q12_SCHEDULING_COLD_START_OR_POOL_DELAY")),
+                "Q12 should trigger for repeated scheduling delay");
+        assertTrue(result.globalRecommendations().stream()
+                        .anyMatch(r -> r.queueRuleId().equals("Q13_QUEUE_RETRY_OR_SPECULATION_NOISE")),
+                "Q13 should trigger for repeated failed attempts");
     }
 
     @Test

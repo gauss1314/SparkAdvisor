@@ -210,5 +210,4 @@ HTML 报告包含：
 
 - predictor 对成本模型参数 `o` / `r` 做多点回归拟合。
 - per-task 内存预算结合 `spark.memory.fraction` 做更精细估算。
-- ui-plugin 对 `UIUtils.headerSparkPage` 做版本判断后接入 Spark 标准页头。
 - 增加本地模型 LLM provider。

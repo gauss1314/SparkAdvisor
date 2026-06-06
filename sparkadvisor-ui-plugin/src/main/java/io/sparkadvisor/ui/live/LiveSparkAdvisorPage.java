@@ -3,6 +3,7 @@ package io.sparkadvisor.ui.live;
 import io.sparkadvisor.core.util.Strings;
 import io.sparkadvisor.monitor.QueueAnalyzer;
 import io.sparkadvisor.report.i18n.ReportLanguage;
+import io.sparkadvisor.ui.render.SparkUiChrome;
 
 import org.apache.spark.ui.SparkUI;
 import org.apache.spark.ui.WebUIPage;
@@ -11,11 +12,8 @@ import java.util.logging.Logger;
 
 import javax.servlet.http.HttpServletRequest;
 
-import scala.collection.JavaConverters;
 import scala.collection.Seq;
 import scala.xml.Node;
-import scala.xml.NodeSeq;
-import scala.xml.Unparsed;
 
 /**
  * Live SparkAdvisor page backed by the driver's in-memory listener snapshot.
@@ -24,11 +22,13 @@ public final class LiveSparkAdvisorPage extends WebUIPage {
 
     private static final Logger LOG = Logger.getLogger(LiveSparkAdvisorPage.class.getName());
 
+    private final LiveSparkAdvisorTab tab;
     private final SparkUI ui;
     private final LiveAnalysisCoordinator coordinator;
 
-    public LiveSparkAdvisorPage(SparkUI ui, LiveApplicationStore store) {
+    public LiveSparkAdvisorPage(LiveSparkAdvisorTab tab, SparkUI ui, LiveApplicationStore store) {
         super("");
+        this.tab = tab;
         this.ui = ui;
         this.coordinator = new LiveAnalysisCoordinator(store);
     }
@@ -47,23 +47,21 @@ public final class LiveSparkAdvisorPage extends WebUIPage {
 
         String bodyHtml;
         try {
-            String css = coordinator.stylesheet();
             String form = searchForm(statementId, language, queueTop, samplePerStratum, bucketValue);
             String report;
             if (Strings.isBlank(statementId)) {
-                css = css + "\n" + coordinator.queueStylesheet();
                 report = coordinator.renderQueueBody(queueTop, samplePerStratum, bucketMs, language);
             } else {
                 report = coordinator.renderSqlBody(statementId, language);
             }
-            bodyHtml = "<style>" + css + "</style>"
-                    + "<div class=\"sparkadvisor-root\">" + form + report + "</div>";
+            bodyHtml = SparkUiChrome.wrap(form + report);
         } catch (Throwable t) {
             LOG.warning("SparkAdvisor live analysis failed: " + t);
-            bodyHtml = "<div class=\"banner warn\">Could not analyze live driver snapshot: "
-                    + escapeText(String.valueOf(t.getMessage())) + "</div>";
+            bodyHtml = SparkUiChrome.wrap(
+                    "<div class=\"banner warn\">Could not analyze live driver snapshot: "
+                            + escapeText(String.valueOf(t.getMessage())) + "</div>");
         }
-        return nodeSeq(new Unparsed(bodyHtml));
+        return SparkUiChrome.page(request, "SparkAdvisor", tab, bodyHtml);
     }
 
     private String searchForm(String current, ReportLanguage language,
@@ -71,30 +69,28 @@ public final class LiveSparkAdvisorPage extends WebUIPage {
         String val = current == null ? "" : escapeAttr(current);
         boolean zh = language != null && language.isChinese();
         String lang = language == null ? "en" : (language.isChinese() ? "zh" : "en");
-        return "<div style=\"padding:12px 0\">"
-                + "<form method=\"get\">"
-                + "<label style=\"font-size:13px;color:#8b949e\">StatementID&nbsp;</label>"
+        return "<div class=\"sparkadvisor-control\">"
+                + "<form class=\"form-inline\" method=\"get\">"
+                + "<label class=\"mr-2 mb-2\">StatementID</label>"
                 + "<input type=\"text\" name=\"statementId\" value=\"" + val + "\" "
-                + "placeholder=\"e.g. 20260521_abc123\" style=\"padding:4px 8px;width:280px\"/> "
-                + "<select name=\"lang\" style=\"padding:4px 8px\">"
+                + "placeholder=\"e.g. 20260521_abc123\" "
+                + "class=\"form-control form-control-sm sparkadvisor-statement mr-2 mb-2\"/> "
+                + "<select name=\"lang\" class=\"form-control form-control-sm mr-2 mb-2\">"
                 + "<option value=\"zh\"" + ("zh".equals(lang) ? " selected" : "") + ">中文</option>"
                 + "<option value=\"en\"" + ("en".equals(lang) ? " selected" : "") + ">English</option>"
                 + "</select> "
-                + "<label style=\"font-size:13px;color:#8b949e;margin-left:8px\">"
-                + (zh ? "最慢数" : "Top") + "&nbsp;</label>"
+                + "<label class=\"mr-2 mb-2\">" + (zh ? "最慢数" : "Top") + "</label>"
                 + "<input type=\"number\" name=\"top\" min=\"1\" max=\"500\" value=\""
-                + queueTop + "\" style=\"padding:4px 8px;width:70px\"/> "
-                + "<label style=\"font-size:13px;color:#8b949e\">"
-                + (zh ? "分层样本" : "Samples") + "&nbsp;</label>"
+                + queueTop + "\" class=\"form-control form-control-sm sparkadvisor-small mr-2 mb-2\"/> "
+                + "<label class=\"mr-2 mb-2\">" + (zh ? "分层样本" : "Samples") + "</label>"
                 + "<input type=\"number\" name=\"samplePerStratum\" min=\"0\" max=\"100\" value=\""
-                + samplePerStratum + "\" style=\"padding:4px 8px;width:70px\"/> "
-                + "<label style=\"font-size:13px;color:#8b949e\">"
-                + (zh ? "分桶" : "Bucket") + "&nbsp;</label>"
+                + samplePerStratum + "\" class=\"form-control form-control-sm sparkadvisor-small mr-2 mb-2\"/> "
+                + "<label class=\"mr-2 mb-2\">" + (zh ? "分桶" : "Bucket") + "</label>"
                 + "<input type=\"text\" name=\"bucket\" value=\"" + escapeAttr(bucket)
-                + "\" style=\"padding:4px 8px;width:70px\"/> "
-                + "<button type=\"submit\" style=\"padding:4px 12px\">"
+                + "\" class=\"form-control form-control-sm sparkadvisor-small mr-2 mb-2\"/> "
+                + "<button type=\"submit\" class=\"btn btn-primary btn-sm mb-2\">"
                 + (zh ? "分析 SQL" : "Analyze SQL") + "</button>"
-                + "<span style=\"margin-left:10px;color:#8b949e;font-size:12px\">"
+                + "<span class=\"text-muted small ml-2 mb-2\">"
                 + (zh ? "留空查看当前 Driver 快照" : "leave blank for the current driver snapshot")
                 + "</span>"
                 + "</form></div>";
@@ -149,14 +145,6 @@ public final class LiveSparkAdvisorPage extends WebUIPage {
                 request.getParameter("lang"),
                 configured,
                 request.getHeader("Accept-Language"));
-    }
-
-    @SuppressWarnings("unchecked")
-    private static Seq<Node> nodeSeq(Node n) {
-        // VERIFY@3.5.1: building a single-element scala Seq[Node] from Java.
-        return (Seq<Node>) (Seq<?>) NodeSeq.fromSeq(
-                JavaConverters.asScalaBuffer(new java.util.ArrayList<scala.xml.Node>(
-                        java.util.Arrays.asList(n))).toSeq());
     }
 
     private static String escapeAttr(String s) {

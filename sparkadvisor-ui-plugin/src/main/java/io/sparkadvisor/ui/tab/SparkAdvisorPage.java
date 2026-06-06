@@ -6,6 +6,7 @@ import io.sparkadvisor.ui.render.AnalysisCoordinator;
 import io.sparkadvisor.ui.render.EventLogPathResolver;
 import io.sparkadvisor.ui.render.QueueAnalysisCoordinator;
 import io.sparkadvisor.ui.render.HistoryRequestPath;
+import io.sparkadvisor.ui.render.SparkUiChrome;
 import io.sparkadvisor.monitor.QueueAnalyzer;
 
 import org.apache.spark.ui.SparkUI;
@@ -15,11 +16,8 @@ import java.util.logging.Logger;
 
 import javax.servlet.http.HttpServletRequest;
 
-import scala.collection.JavaConverters;
 import scala.collection.Seq;
 import scala.xml.Node;
-import scala.xml.NodeSeq;
-import scala.xml.Unparsed;
 
 /**
  * The single page under the SparkAdvisor tab. Accepts a {@code statementId} query parameter,
@@ -35,6 +33,7 @@ public final class SparkAdvisorPage extends WebUIPage {
 
     private static final Logger LOG = Logger.getLogger(SparkAdvisorPage.class.getName());
 
+    private final SparkAdvisorTab tab;
     private final SparkUI ui;
     private final AnalysisCoordinator coordinator;
     private final QueueAnalysisCoordinator queueCoordinator;
@@ -42,6 +41,7 @@ public final class SparkAdvisorPage extends WebUIPage {
 
     public SparkAdvisorPage(SparkAdvisorTab parent, SparkUI ui) {
         super(""); // empty prefix => page lives at /sparkadvisor
+        this.tab = parent;
         this.ui = ui;
         // Hadoop conf inherits the SHS process environment (Kerberos ticket already present).
         org.apache.hadoop.conf.Configuration hadoopConf = new org.apache.hadoop.conf.Configuration();
@@ -71,32 +71,21 @@ public final class SparkAdvisorPage extends WebUIPage {
 
         String bodyHtml;
         try {
-            String css = coordinator.stylesheet();
             String form = searchForm(statementId, language, queueTop, samplePerStratum, bucketValue);
             String report;
             if (Strings.isBlank(statementId)) {
-                css = css + "\n" + queueCoordinator.stylesheet();
                 report = queueCoordinator.renderBody(
                         path, queueTop, samplePerStratum, bucketMs, language);
             } else {
                 report = coordinator.renderBody(path, statementId, language);
             }
-            bodyHtml = "<style>" + css + "</style>"
-                    + "<div class=\"sparkadvisor-root\">" + form + report + "</div>";
+            bodyHtml = SparkUiChrome.wrap(form + report);
         } catch (Throwable t) {
             LOG.warning("SparkAdvisor analysis failed for " + path + ": " + t);
-            bodyHtml = errorHtml(path, t);
+            bodyHtml = SparkUiChrome.wrap(errorHtml(path, t));
         }
 
-        // Emit our raw HTML verbatim as a single XML node.
-        //
-        // NOTE: We deliberately do NOT call UIUtils.headerSparkPage here. That helper's
-        // signature has shifted across Spark versions and is the most brittle internal API to
-        // bind from Java. Returning our self-contained content (with inlined CSS) renders the
-        // tab body without Spark's standard page header frame, which is an acceptable tradeoff
-        // for robustness. If the standard frame is desired later, wrap this content with the
-        // version-correct headerSparkPage overload (VERIFY@3.5.1) behind a feature check.
-        return nodeSeq(new Unparsed(bodyHtml));
+        return SparkUiChrome.page(request, "SparkAdvisor", tab, bodyHtml);
     }
 
     private String searchForm(String current, ReportLanguage language,
@@ -104,30 +93,28 @@ public final class SparkAdvisorPage extends WebUIPage {
         String val = current == null ? "" : escapeAttr(current);
         boolean zh = language != null && language.isChinese();
         String lang = language == null ? "en" : (language.isChinese() ? "zh" : "en");
-        return "<div style=\"padding:12px 0\">"
-                + "<form method=\"get\">"
-                + "<label style=\"font-size:13px;color:#8b949e\">StatementID&nbsp;</label>"
+        return "<div class=\"sparkadvisor-control\">"
+                + "<form class=\"form-inline\" method=\"get\">"
+                + "<label class=\"mr-2 mb-2\">StatementID</label>"
                 + "<input type=\"text\" name=\"statementId\" value=\"" + val + "\" "
-                + "placeholder=\"e.g. 20260521_abc123\" style=\"padding:4px 8px;width:280px\"/> "
-                + "<select name=\"lang\" style=\"padding:4px 8px\">"
+                + "placeholder=\"e.g. 20260521_abc123\" "
+                + "class=\"form-control form-control-sm sparkadvisor-statement mr-2 mb-2\"/> "
+                + "<select name=\"lang\" class=\"form-control form-control-sm mr-2 mb-2\">"
                 + "<option value=\"zh\"" + ("zh".equals(lang) ? " selected" : "") + ">中文</option>"
                 + "<option value=\"en\"" + ("en".equals(lang) ? " selected" : "") + ">English</option>"
                 + "</select> "
-                + "<label style=\"font-size:13px;color:#8b949e;margin-left:8px\">"
-                + (zh ? "最慢数" : "Top") + "&nbsp;</label>"
+                + "<label class=\"mr-2 mb-2\">" + (zh ? "最慢数" : "Top") + "</label>"
                 + "<input type=\"number\" name=\"top\" min=\"1\" max=\"500\" value=\""
-                + queueTop + "\" style=\"padding:4px 8px;width:70px\"/> "
-                + "<label style=\"font-size:13px;color:#8b949e\">"
-                + (zh ? "分层样本" : "Samples") + "&nbsp;</label>"
+                + queueTop + "\" class=\"form-control form-control-sm sparkadvisor-small mr-2 mb-2\"/> "
+                + "<label class=\"mr-2 mb-2\">" + (zh ? "分层样本" : "Samples") + "</label>"
                 + "<input type=\"number\" name=\"samplePerStratum\" min=\"0\" max=\"100\" value=\""
-                + samplePerStratum + "\" style=\"padding:4px 8px;width:70px\"/> "
-                + "<label style=\"font-size:13px;color:#8b949e\">"
-                + (zh ? "分桶" : "Bucket") + "&nbsp;</label>"
+                + samplePerStratum + "\" class=\"form-control form-control-sm sparkadvisor-small mr-2 mb-2\"/> "
+                + "<label class=\"mr-2 mb-2\">" + (zh ? "分桶" : "Bucket") + "</label>"
                 + "<input type=\"text\" name=\"bucket\" value=\"" + escapeAttr(bucket)
-                + "\" style=\"padding:4px 8px;width:70px\"/> "
-                + "<button type=\"submit\" style=\"padding:4px 12px\">"
+                + "\" class=\"form-control form-control-sm sparkadvisor-small mr-2 mb-2\"/> "
+                + "<button type=\"submit\" class=\"btn btn-primary btn-sm mb-2\">"
                 + (zh ? "分析 SQL" : "Analyze SQL") + "</button>"
-                + "<span style=\"margin-left:10px;color:#8b949e;font-size:12px\">"
+                + "<span class=\"text-muted small ml-2 mb-2\">"
                 + (zh ? "留空查看队列报告" : "leave blank for the queue report") + "</span>"
                 + "</form></div>";
     }
@@ -196,15 +183,6 @@ public final class SparkAdvisorPage extends WebUIPage {
         } catch (Throwable t) {
             return "";
         }
-    }
-
-    // --- scala.xml helpers ------------------------------------------------------
-
-    @SuppressWarnings("unchecked")
-    private static Seq<Node> nodeSeq(Node n) {
-        // VERIFY@3.5.1: building a single-element scala Seq[Node] from Java.
-        return (Seq<Node>) (Seq<?>) NodeSeq.fromSeq(
-                JavaConverters.asScalaBuffer(new java.util.ArrayList<scala.xml.Node>(java.util.Arrays.asList(n))).toSeq());
     }
 
     private static String escapeAttr(String s) {

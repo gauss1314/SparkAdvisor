@@ -1,18 +1,20 @@
 package io.sparkadvisor.ui.live;
 
+import io.sparkadvisor.ui.render.SparkUiChrome;
+
 import org.apache.spark.ui.SparkUI;
-import org.apache.spark.ui.WebUITab;
+import org.apache.spark.ui.SparkUITab;
 
 /**
  * SparkAdvisor tab attached directly to a live driver Spark UI.
  */
-public final class LiveSparkAdvisorTab extends WebUITab {
+public final class LiveSparkAdvisorTab extends SparkUITab {
 
     public static final String PREFIX = "sparkadvisor";
 
     public LiveSparkAdvisorTab(SparkUI parent, LiveApplicationStore store) {
         super(parent, PREFIX);
-        attachPage(new LiveSparkAdvisorPage(parent, store));
+        attachPage(new LiveSparkAdvisorPage(this, parent, store));
     }
 
     @Override
@@ -22,6 +24,6 @@ public final class LiveSparkAdvisorTab extends WebUITab {
 
     @Override
     public int displayOrder() {
-        return 100;
+        return SparkUiChrome.LAST_TAB_ORDER;
     }
 }

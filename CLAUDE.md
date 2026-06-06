@@ -41,7 +41,7 @@ SparkAdvisor：以 **Java 8 运行时兼容** 为目标、面向 **Spark 3.5.1**
 - **JDK 9+ 反射封装**：Spark 3.5 在 JDK 9+ 上回放可能需放开模块封装，运行时加 `--add-opens=java.base/...`（见 `bin/sparkadvisor` 与设计文档 §10.1）。Java 8 不支持该参数，启动脚本会按 JVM 版本条件添加。
 - **History Server 扩展点（M3）**：`org.apache.spark.status.AppHistoryServerPlugin` 是官方接口，SHS 通过 `ServiceLoader`（`META-INF/services/org.apache.spark.status.AppHistoryServerPlugin`）自动发现——**零侵入，jar 入 classpath 即可**，与 Spark SQL 自己的 tab 同机制。三个方法：`Seq<SparkListener> createListeners(SparkConf, ElementTrackingStore)`、`int displayOrder()`、`void setupUI(SparkUI)`。SQL tab 的 `SQLHistoryServerPlugin.setupUI` 即从 `ui.store` 建 `SQLTab().attachTab()`。
 - **SparkAdvisor 采用"自给自足"集成（策略 B）**：`createListeners` 返回空（不干预 SHS 回放），`setupUI` 用我们自己的 `EventLogAnalyzer` 重解析建 tab。复用全部已验证栈、与 SHS store 解耦；日志懒解析（点开 tab 才解析）并按 app 缓存。
-- **UI 内部类**（`SparkUI`/`WebUITab`/`WebUIPage`/`UIUtils`）签名 VERIFY@3.5.1。`WebUIPage.render` 返回 `scala.xml.Seq[Node]`；我们用 `scala.xml.Unparsed` 包裹自产 HTML 字符串直接输出，**刻意不调 `UIUtils.headerSparkPage`**（其重载跨版本最易破）——代价是无 Spark 标准页头框，换取健壮性。
+- **UI 内部类**（`SparkUI`/`SparkUITab`/`WebUIPage`/`UIUtils`）签名 VERIFY@3.5.1。`WebUIPage.render` 返回 `scala.xml.Seq[Node]`；SparkAdvisor tab 继承 `SparkUITab` 并固定到最后展示，页面通过 `SparkUiChrome` 调用 `UIUtils.headerSparkPage` 保留 Spark 标准页头和原生 tab 导航，报告主体用 `scala.xml.Unparsed` 嵌入并用 scoped CSS 适配 Spark 默认风格。
 
 > 若上述任一签名在真实编译时不符，以 Spark 3.5.1 实际为准并就地修正，同时更新本节。
 
@@ -94,7 +94,7 @@ sparkadvisor-ui-plugin History Server tab（AppHistoryServerPlugin/ServiceLoader
 
 **验证状态（JDK 21 编译 Java 8 产物 + 行为测试）**：CoreTimeline 积分（含动态分配/部分窗口）、R4/R5/R7（含负例）、RuleBasedAdvisor 端到端叙述、extractJson 去 fence/prose、LLM JSON 解析与降级、路径解析——全 PASS。`mvn -q clean package` 与 `mvn -q test` 已通过，生产 class major version 验证为 52；core eventlog 层、CLI、ui-plugin 触及 Spark 的类仍保留 `VERIFY@3.5.1`。
 
-**项目已功能完整（M1–M3 + F4 + Q-M4）。** 后续可选优化：predictor 多点回归拟合 `o`/`r`；per-task 内存预算用 `spark.memory.fraction` 精算；ui-plugin 接入 `UIUtils.headerSparkPage`（带版本判断）；本地 LLM provider。
+**项目已功能完整（M1–M3 + F4 + Q-M4）。** 后续可选优化：predictor 多点回归拟合 `o`/`r`；per-task 内存预算用 `spark.memory.fraction` 精算；本地 LLM provider。
 
 ## 9. 报告模块要点（M1 已实现，改动须遵守）
 

@@ -1,6 +1,7 @@
 package io.sparkadvisor.ui.plugin;
 
 import io.sparkadvisor.core.util.Strings;
+import io.sparkadvisor.ui.render.SparkUiChrome;
 import io.sparkadvisor.ui.tab.SparkAdvisorTab;
 
 import org.apache.spark.SparkConf;
@@ -50,16 +51,16 @@ public final class SparkAdvisorHistoryPlugin implements AppHistoryServerPlugin {
 
     @Override
     public int displayOrder() {
-        // Place after Spark's built-in tabs (Jobs/Stages/.../SQL).
-        return 100;
+        // Place after Spark's built-in tabs and other lower-order SHS plugins.
+        return SparkUiChrome.LAST_TAB_ORDER;
     }
 
     @Override
     public void setupUI(SparkUI ui) {
         try {
             SparkAdvisorTab tab = new SparkAdvisorTab(ui);
-            // VERIFY@3.5.1: WebUITab.attachPage(...) and SparkUI.attachTab(WebUITab) exist and
-            // are accessible from Java; SQLHistoryServerPlugin.setupUI does the same.
+            // VERIFY@3.5.1: SparkUITab.attachPage(...) is accessible from Java, and SparkUITab
+            // is accepted by SparkUI.attachTab(WebUITab).
             ui.attachTab(tab);
             // Static resources (none required currently; CSS is inlined in the page).
             LOG.info("SparkAdvisor tab attached to History Server UI for app "

@@ -80,7 +80,7 @@ public final class AnalyzeCommand implements Callable<Integer> {
                 HadoopCliConfiguration.load(hadoopConfDir, authToLocal);
 
         EventLogAnalyzer analyzer = new EventLogAnalyzer(conf);
-        ApplicationModel model = analyzer.analyze(path);
+        ApplicationModel model = analyzer.analyze(path, true);
 
         if (model.incomplete()) {
             System.err.println("[warn] Event log appears incomplete/truncated; "

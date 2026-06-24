@@ -160,6 +160,7 @@ public final class QueueHtmlWriter {
         kv(h, t(zh, "Completed", "已完成"), String.valueOf(s.completedQueries()));
         kv(h, t(zh, "Running", "运行中"), String.valueOf(s.runningQueries()));
         kv(h, t(zh, "Fixed cores", "固定 Core"), String.valueOf(s.fixedExecutorCores()));
+        kv(h, t(zh, "Tasks in window", "窗口 Task 总数"), String.valueOf(r.timeline().stream().mapToInt(QueueAnalysisResult.HourBucketStat::taskCount).sum()));
         h.append("</div><p class=\"muted\">").append(esc(r.meta().assumptions())).append("</p></section>");
         h.append("<section><h2>").append(t(zh, "Queue health", "队列健康度"))
                 .append("</h2><div class=\"cards\">");
@@ -186,12 +187,14 @@ public final class QueueHtmlWriter {
 
     private void timeline(StringBuilder h, QueueAnalysisResult r, boolean zh) {
         h.append("<section><h2>")
-                .append(t(zh, "Latency and utilization trend", "延迟与利用率趋势"))
+                .append(t(zh, "Latency, utilization and task trend", "延迟、利用率与 Task 趋势"))
                 .append("</h2>");
         timelineChart(h, r.timeline(), zh);
         h.append("<table><thead><tr>");
         th(h, t(zh, "Bucket", "时间桶"));
         th(h, t(zh, "Queries", "查询数"));
+        th(h, t(zh, "Tasks", "Task 数"));
+        th(h, t(zh, "Peak tasks", "Task 峰值"));
         th(h, "P50");
         th(h, "P95");
         th(h, "P99");
@@ -204,6 +207,8 @@ public final class QueueHtmlWriter {
             h.append("<tr>");
             td(h, time(b.bucketStart()));
             td(h, String.valueOf(b.queryCount()));
+            td(h, String.valueOf(b.taskCount()));
+            td(h, String.valueOf(b.peakConcurrentTasks()));
             td(h, duration(b.p50Ms()));
             td(h, duration(b.p95Ms()));
             td(h, duration(b.p99Ms()));

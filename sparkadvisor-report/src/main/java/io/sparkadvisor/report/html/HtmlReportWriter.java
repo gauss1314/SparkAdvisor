@@ -147,6 +147,8 @@ public final class HtmlReportWriter {
         kv(h, "StatementID", s.statementId() == null ? "&mdash;" : esc(s.statementId()));
         kv(h, t(zh, "Duration", "持续时间"), duration(s.wallClockMs()));
         kv(h, t(zh, "Stages", "Stage 数"), String.valueOf(s.stages().size()));
+        kv(h, t(zh, "Peak task concurrency", "Task 并发峰值"), String.valueOf(s.maxConcurrentTasks()));
+        kv(h, t(zh, "Avg task concurrency", "Task 平均并发"), String.format(java.util.Locale.ROOT, "%.1f", s.avgConcurrentTasks()));
         h.append("</div>");
         if (!Strings.isBlank(s.description())) {
             h.append("<details><summary>").append(t(zh, "SQL text", "SQL 文本"))
@@ -219,6 +221,7 @@ public final class HtmlReportWriter {
         th(h, t(zh, "Tasks", "Task 数"));
         th(h, t(zh, "Wall", "墙钟"));
         th(h, t(zh, "Max task", "最大 Task"));
+        th(h, t(zh, "Max task ID", "最长 Task ID"));
         th(h, t(zh, "Median", "中位数"));
         th(h, t(zh, "Skew", "倾斜"));
         th(h, "Shuffle R/W");
@@ -235,6 +238,7 @@ public final class HtmlReportWriter {
             td(h, String.valueOf(st.numTasks()));
             td(h, duration(st.wallClockMs()));
             td(h, duration(st.maxTaskMs()));
+            td(h, st.maxTaskId() >= 0L ? String.valueOf(st.maxTaskId()) : "&mdash;");
             td(h, duration(st.medianTaskMs()));
             td(h, ratio(st.skewRatio()) + (skewy ? " ⚠" : ""));
             td(h, bytes(st.shuffleReadBytes()) + " / " + bytes(st.shuffleWriteBytes()));

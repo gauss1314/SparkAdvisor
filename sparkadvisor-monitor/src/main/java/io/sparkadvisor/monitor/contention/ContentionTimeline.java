@@ -199,7 +199,7 @@ public final class ContentionTimeline {
             BucketMetrics m = bucketMetrics(tasks, bucketStart, bucketEnd);
             result.add(new BucketUtilization(bucketStart, bucketEnd, avg,
                     m.cpuEfficiency(), m.fetchWaitRatio(), m.gcRatio(),
-                    m.failedAttemptRatio(), m.speculativeAttemptRatio()));
+                    m.failedAttemptRatio(), m.speculativeAttemptRatio(), m.taskCount(), peakConcurrentTasks(tasks, bucketStart, bucketEnd)));
         }
         return result;
     }
@@ -238,6 +238,28 @@ public final class ContentionTimeline {
             }
         }
         return new BucketMetrics(runMs, cpuMs, fetchMs, gcMs, attempts, failed, speculative);
+    }
+
+    private static int peakConcurrentTasks(List<TaskInterval> tasks, long bucketStart, long bucketEnd) {
+        List<Event> events = new ArrayList<Event>();
+        for (TaskInterval task : tasks) {
+            long start = Math.max(task.launchTime(), bucketStart);
+            long end = Math.min(task.finishTime(), bucketEnd);
+            if (end > start) {
+                events.add(new Event(start, 1, task.sqlExecutionId()));
+                events.add(new Event(end, -1, task.sqlExecutionId()));
+            }
+        }
+        events.sort(Comparator.comparingLong(Event::time).thenComparingInt(Event::delta));
+        int active = 0;
+        int peak = 0;
+        for (Event event : events) {
+            active += event.delta();
+            if (active > peak) {
+                peak = active;
+            }
+        }
+        return peak;
     }
 
     private static Window queryWindow(List<QuerySample> queries, long executionId, double avgUtilization) {
@@ -289,11 +311,11 @@ public final class ContentionTimeline {
 
     public static final class Segment { private final long startTime,endTime; private final int busyCores; private final double utilization; public Segment(long startTime,long endTime,int busyCores,double utilization){this.startTime=startTime;this.endTime=endTime;this.busyCores=busyCores;this.utilization=utilization;} public long startTime(){return startTime;} public long endTime(){return endTime;} public int busyCores(){return busyCores;} public double utilization(){return utilization;} @Override public boolean equals(Object o){return ValueObjects.equalFields(this,o);} @Override public int hashCode(){return ValueObjects.hashFields(this);} @Override public String toString(){return ValueObjects.toString(this);} }
 
-    public static final class BucketUtilization { private final long bucketStart,bucketEnd; private final double avgUtilization,cpuEfficiency,fetchWaitRatio,gcRatio,failedAttemptRatio,speculativeAttemptRatio; public BucketUtilization(long bucketStart,long bucketEnd,double avgUtilization){this(bucketStart,bucketEnd,avgUtilization,0.0,0.0,0.0,0.0,0.0);} public BucketUtilization(long bucketStart,long bucketEnd,double avgUtilization,double cpuEfficiency,double fetchWaitRatio,double gcRatio,double failedAttemptRatio,double speculativeAttemptRatio){this.bucketStart=bucketStart;this.bucketEnd=bucketEnd;this.avgUtilization=avgUtilization;this.cpuEfficiency=cpuEfficiency;this.fetchWaitRatio=fetchWaitRatio;this.gcRatio=gcRatio;this.failedAttemptRatio=failedAttemptRatio;this.speculativeAttemptRatio=speculativeAttemptRatio;} public long bucketStart(){return bucketStart;} public long bucketEnd(){return bucketEnd;} public double avgUtilization(){return avgUtilization;} public double cpuEfficiency(){return cpuEfficiency;} public double fetchWaitRatio(){return fetchWaitRatio;} public double gcRatio(){return gcRatio;} public double failedAttemptRatio(){return failedAttemptRatio;} public double speculativeAttemptRatio(){return speculativeAttemptRatio;} @Override public boolean equals(Object o){return ValueObjects.equalFields(this,o);} @Override public int hashCode(){return ValueObjects.hashFields(this);} @Override public String toString(){return ValueObjects.toString(this);} }
+    public static final class BucketUtilization { private final long bucketStart,bucketEnd; private final double avgUtilization,cpuEfficiency,fetchWaitRatio,gcRatio,failedAttemptRatio,speculativeAttemptRatio; private final int taskCount,peakConcurrentTasks; public BucketUtilization(long bucketStart,long bucketEnd,double avgUtilization){this(bucketStart,bucketEnd,avgUtilization,0.0,0.0,0.0,0.0,0.0,0,0);} public BucketUtilization(long bucketStart,long bucketEnd,double avgUtilization,double cpuEfficiency,double fetchWaitRatio,double gcRatio,double failedAttemptRatio,double speculativeAttemptRatio){this(bucketStart,bucketEnd,avgUtilization,cpuEfficiency,fetchWaitRatio,gcRatio,failedAttemptRatio,speculativeAttemptRatio,0,0);} public BucketUtilization(long bucketStart,long bucketEnd,double avgUtilization,double cpuEfficiency,double fetchWaitRatio,double gcRatio,double failedAttemptRatio,double speculativeAttemptRatio,int taskCount,int peakConcurrentTasks){this.bucketStart=bucketStart;this.bucketEnd=bucketEnd;this.avgUtilization=avgUtilization;this.cpuEfficiency=cpuEfficiency;this.fetchWaitRatio=fetchWaitRatio;this.gcRatio=gcRatio;this.failedAttemptRatio=failedAttemptRatio;this.speculativeAttemptRatio=speculativeAttemptRatio;this.taskCount=taskCount;this.peakConcurrentTasks=peakConcurrentTasks;} public long bucketStart(){return bucketStart;} public long bucketEnd(){return bucketEnd;} public double avgUtilization(){return avgUtilization;} public double cpuEfficiency(){return cpuEfficiency;} public double fetchWaitRatio(){return fetchWaitRatio;} public double gcRatio(){return gcRatio;} public double failedAttemptRatio(){return failedAttemptRatio;} public double speculativeAttemptRatio(){return speculativeAttemptRatio;} public int taskCount(){return taskCount;} public int peakConcurrentTasks(){return peakConcurrentTasks;} @Override public boolean equals(Object o){return ValueObjects.equalFields(this,o);} @Override public int hashCode(){return ValueObjects.hashFields(this);} @Override public String toString(){return ValueObjects.toString(this);} }
 
     public static final class QueryContention { private final long executionId,ownCoreMs; private final double avgPoolUtilization,ownCoreShare; private final boolean contentionLimited,inefficientBusy; public QueryContention(long executionId,double avgPoolUtilization,double ownCoreShare,long ownCoreMs,boolean contentionLimited){this(executionId,avgPoolUtilization,ownCoreShare,ownCoreMs,contentionLimited,false);} public QueryContention(long executionId,double avgPoolUtilization,double ownCoreShare,long ownCoreMs,boolean contentionLimited,boolean inefficientBusy){this.executionId=executionId;this.avgPoolUtilization=avgPoolUtilization;this.ownCoreShare=ownCoreShare;this.ownCoreMs=ownCoreMs;this.contentionLimited=contentionLimited;this.inefficientBusy=inefficientBusy;} public long executionId(){return executionId;} public double avgPoolUtilization(){return avgPoolUtilization;} public double ownCoreShare(){return ownCoreShare;} public long ownCoreMs(){return ownCoreMs;} public boolean contentionLimited(){return contentionLimited;} public boolean inefficientBusy(){return inefficientBusy;} @Override public boolean equals(Object o){return ValueObjects.equalFields(this,o);} @Override public int hashCode(){return ValueObjects.hashFields(this);} @Override public String toString(){return ValueObjects.toString(this);} }
 
     public static final class Window { private final long startTime,endTime; private final double avgUtilization; public Window(long startTime,long endTime,double avgUtilization){this.startTime=startTime;this.endTime=endTime;this.avgUtilization=avgUtilization;} public long startTime(){return startTime;} public long endTime(){return endTime;} public double avgUtilization(){return avgUtilization;} @Override public boolean equals(Object o){return ValueObjects.equalFields(this,o);} @Override public int hashCode(){return ValueObjects.hashFields(this);} @Override public String toString(){return ValueObjects.toString(this);} }
 
-    private static final class BucketMetrics { private final long runMs,cpuMs,fetchMs,gcMs; private final int attempts,failed,speculative; BucketMetrics(long runMs,long cpuMs,long fetchMs,long gcMs,int attempts,int failed,int speculative){this.runMs=runMs;this.cpuMs=cpuMs;this.fetchMs=fetchMs;this.gcMs=gcMs;this.attempts=attempts;this.failed=failed;this.speculative=speculative;} double cpuEfficiency(){return runMs<=0L?0.0:Math.min(1.0,(double)cpuMs/(double)runMs);} double fetchWaitRatio(){return runMs<=0L?0.0:(double)fetchMs/(double)runMs;} double gcRatio(){return runMs<=0L?0.0:(double)gcMs/(double)runMs;} double failedAttemptRatio(){return attempts<=0?0.0:(double)failed/(double)attempts;} double speculativeAttemptRatio(){return attempts<=0?0.0:(double)speculative/(double)attempts;} }
+    private static final class BucketMetrics { private final long runMs,cpuMs,fetchMs,gcMs; private final int attempts,failed,speculative; BucketMetrics(long runMs,long cpuMs,long fetchMs,long gcMs,int attempts,int failed,int speculative){this.runMs=runMs;this.cpuMs=cpuMs;this.fetchMs=fetchMs;this.gcMs=gcMs;this.attempts=attempts;this.failed=failed;this.speculative=speculative;} double cpuEfficiency(){return runMs<=0L?0.0:Math.min(1.0,(double)cpuMs/(double)runMs);} double fetchWaitRatio(){return runMs<=0L?0.0:(double)fetchMs/(double)runMs;} double gcRatio(){return runMs<=0L?0.0:(double)gcMs/(double)runMs;} double failedAttemptRatio(){return attempts<=0?0.0:(double)failed/(double)attempts;} double speculativeAttemptRatio(){return attempts<=0?0.0:(double)speculative/(double)attempts;} int taskCount(){return attempts;} }
 }

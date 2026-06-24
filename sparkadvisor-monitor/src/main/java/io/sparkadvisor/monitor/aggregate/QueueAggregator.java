@@ -137,7 +137,9 @@ public final class QueueAggregator {
                     resource == null ? 0.0 : resource.fetchWaitRatio(),
                     resource == null ? 0.0 : resource.gcRatio(),
                     resource == null ? 0.0 : resource.failedAttemptRatio(),
-                    resource == null ? 0.0 : resource.speculativeAttemptRatio()));
+                    resource == null ? 0.0 : resource.speculativeAttemptRatio(),
+                    resource == null ? 0 : resource.taskCount(),
+                    resource == null ? 0 : resource.peakConcurrentTasks()));
         }
         return Java8Collections.listCopy(result);
     }

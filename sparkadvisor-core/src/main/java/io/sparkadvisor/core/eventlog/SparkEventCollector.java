@@ -229,7 +229,12 @@ public final class SparkEventCollector extends SparkListener {
             return; // failed/speculative task without metrics
         }
         // Pull raw metrics; field accessors verified against Spark 3.5.1 TaskMetrics.
-        b.duration.add(m.executorRunTime());                       // VERIFY@3.5.1
+        long executorRunTime = m.executorRunTime();                      // VERIFY@3.5.1
+        if (executorRunTime > b.maxTaskDurationMs) {
+            b.maxTaskDurationMs = executorRunTime;
+            b.maxTaskId = e.taskInfo().taskId();                         // VERIFY@3.5.1
+        }
+        b.duration.add(executorRunTime);
         b.gc.add(m.jvmGCTime());                                   // VERIFY@3.5.1
         b.deserialize.add(m.executorDeserializeTime());            // VERIFY@3.5.1
         b.memorySpill.add(m.memoryBytesSpilled());
@@ -352,6 +357,8 @@ public final class SparkEventCollector extends SparkListener {
         int failedTaskEndCount;
         long shuffleFetchWaitMs;
         long shuffleRemoteReadBytes;
+        long maxTaskId = -1L;
+        long maxTaskDurationMs = -1L;
 
         final MetricDistributionBuilder duration = new MetricDistributionBuilder();
         final MetricDistributionBuilder shuffleRead = new MetricDistributionBuilder();
@@ -373,7 +380,7 @@ public final class SparkEventCollector extends SparkListener {
                     submissionTime, firstTaskLaunch, completionTime,
                     shuffleRead.build().sum(), shuffleWrite.build().sum(),
                     shuffleFetchWaitMs, shuffleRemoteReadBytes,
-                    failedTaskEndCount, Math.max(0, taskEndCount - numTasks), stats);
+                    failedTaskEndCount, Math.max(0, taskEndCount - numTasks), maxTaskId, stats);
         }
     }
 }

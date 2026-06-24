@@ -29,13 +29,13 @@ public final class EventLogAnalyzer {
      * Read and parse the event log at {@code path} (single file or rolling directory).
      */
     public ApplicationModel analyze(String path) throws IOException {
-        return analyze(path, false);
+        return analyze(path, true);
     }
 
     /**
      * Read and parse the event log at {@code path}, optionally retaining lightweight task
-     * intervals for queue-level contention analysis. Leave this disabled for the normal
-     * single-SQL path to preserve low memory use.
+     * intervals for queue-level contention analysis. Enable this for SQL reports that need longest-task ids and task concurrency;
+     * disable only for legacy low-memory callers that do not need task-level timing.
      */
     public ApplicationModel analyze(String path, boolean collectTaskIntervals) throws IOException {
         try (EventLogReader reader = new EventLogReader(path, hadoopConf)) {

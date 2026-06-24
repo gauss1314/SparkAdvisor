@@ -4,6 +4,7 @@ import io.sparkadvisor.core.model.ApplicationModel;
 import io.sparkadvisor.core.model.Job;
 import io.sparkadvisor.core.model.SqlExecution;
 import io.sparkadvisor.core.model.Stage;
+import io.sparkadvisor.core.model.TaskInterval;
 import io.sparkadvisor.core.util.Java8Collections;
 
 import java.util.ArrayList;
@@ -69,7 +70,61 @@ public final class MetricAggregator {
 
         return new SqlAnalysis(
                 sql.executionId(), sql.statementId(), sql.description(), sql.physicalPlanText(),
-                wall, criticalPath, ideal, deviation, util, stageAnalyses);
+                wall, criticalPath, ideal, deviation, util, taskConcurrency(sql), avgTaskConcurrency(sql), stageAnalyses);
+    }
+
+    private int taskConcurrency(SqlExecution sql) {
+        int max = 0;
+        int active = 0;
+        List<TaskEvent> events = taskEvents(sql);
+        for (TaskEvent event : events) {
+            active += event.delta;
+            if (active > max) {
+                max = active;
+            }
+        }
+        return max;
+    }
+
+    private double avgTaskConcurrency(SqlExecution sql) {
+        if (sql.startTime() <= 0L || sql.endTime() <= sql.startTime()) {
+            return 0.0;
+        }
+        List<TaskEvent> events = taskEvents(sql);
+        if (events.isEmpty()) {
+            return 0.0;
+        }
+        long prev = sql.startTime();
+        long busyMs = 0L;
+        int active = 0;
+        for (TaskEvent event : events) {
+            long time = Math.max(sql.startTime(), Math.min(sql.endTime(), event.time));
+            if (time > prev && active > 0) {
+                busyMs += (long) active * (time - prev);
+            }
+            active += event.delta;
+            prev = time;
+        }
+        return (double) busyMs / (double) (sql.endTime() - sql.startTime());
+    }
+
+    private List<TaskEvent> taskEvents(SqlExecution sql) {
+        List<TaskEvent> events = new ArrayList<TaskEvent>();
+        for (TaskInterval task : app.taskIntervals()) {
+            if (task.sqlExecutionId() != null && task.sqlExecutionId().longValue() == sql.executionId()
+                    && task.finishTime() > task.launchTime()) {
+                events.add(new TaskEvent(task.launchTime(), 1));
+                events.add(new TaskEvent(task.finishTime(), -1));
+            }
+        }
+        events.sort((a, b) -> a.time == b.time ? Integer.compare(a.delta, b.delta) : Long.compare(a.time, b.time));
+        return events;
+    }
+
+    private static final class TaskEvent {
+        final long time;
+        final int delta;
+        TaskEvent(long time, int delta) { this.time = time; this.delta = delta; }
     }
 
     // ---- SQL -> stages linkage -------------------------------------------------

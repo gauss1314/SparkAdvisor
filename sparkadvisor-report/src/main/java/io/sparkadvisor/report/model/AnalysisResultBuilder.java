@@ -7,6 +7,9 @@ import io.sparkadvisor.core.finding.Finding;
 import io.sparkadvisor.core.model.ApplicationModel;
 import io.sparkadvisor.core.model.SqlExecution;
 import io.sparkadvisor.predictor.PredictionService;
+import io.sparkadvisor.analyzer.v2.RuleThresholdsV2;
+import io.sparkadvisor.analyzer.v2.RuleRunResult;
+import io.sparkadvisor.analyzer.v2.Capability;
 
 import java.time.Instant;
 import java.util.List;
@@ -27,18 +30,22 @@ public final class AnalysisResultBuilder {
     private final String sourcePath;
 
     public AnalysisResultBuilder(ApplicationModel app, String sourcePath) {
+        this(app, sourcePath, null);
+    }
+
+    public AnalysisResultBuilder(ApplicationModel app, String sourcePath, RuleThresholdsV2 thresholds) {
         this.app = app;
         this.aggregator = new MetricAggregator(app);
-        this.performanceAnalyzer = new PerformanceAnalyzer();
+        this.performanceAnalyzer = thresholds == null ? new PerformanceAnalyzer() : new PerformanceAnalyzer(thresholds);
         this.predictionService = new PredictionService();
         this.sourcePath = sourcePath;
     }
 
     public AnalysisResult build(SqlExecution target) {
         SqlAnalysis sqlAnalysis = (target == null) ? null : aggregator.analyze(target);
-        List<Finding> findings = (sqlAnalysis == null)
-                ? new java.util.ArrayList<>()
-                : performanceAnalyzer.analyze(sqlAnalysis, app.conf());
+        RuleRunResult ruleRun = (sqlAnalysis == null) ? null
+                : performanceAnalyzer.analyzeV2Detailed(sqlAnalysis, app.conf(), app.incomplete());
+        List<Finding> findings = ruleRun == null ? new java.util.ArrayList<Finding>() : ruleRun.findings();
         PredictionService.Predictions predictions = (sqlAnalysis == null)
                 ? new PredictionService.Predictions(null, null)
                 : predictionService.predict(sqlAnalysis, app.conf());
@@ -49,7 +56,7 @@ public final class AnalysisResultBuilder {
                 predictions.shuffle(),
                 predictions.executor(),
                 null,                      // aiAdvice: F4
-                meta());
+                meta(ruleRun));
     }
 
     private AnalysisResult.AppSummary appSummary() {
@@ -63,12 +70,21 @@ public final class AnalysisResultBuilder {
                 readCores());
     }
 
-    private AnalysisResult.Meta meta() {
+    private AnalysisResult.Meta meta(RuleRunResult ruleRun) {
+        java.util.Map<String,java.util.List<String>> unavailable = new java.util.LinkedHashMap<String,java.util.List<String>>();
+        if (ruleRun != null) {
+            for (java.util.Map.Entry<String,java.util.Set<Capability>> entry : ruleRun.unavailableRules().entrySet()) {
+                java.util.List<String> names = new java.util.ArrayList<String>();
+                for (Capability capability : entry.getValue()) names.add(capability.name());
+                unavailable.put(entry.getKey(), names);
+            }
+        }
         return new AnalysisResult.Meta(
                 VERSION,
                 Instant.now().toString(),
                 app.incomplete(),
-                sourcePath);
+                sourcePath,
+                unavailable);
     }
 
     private int readCores() {

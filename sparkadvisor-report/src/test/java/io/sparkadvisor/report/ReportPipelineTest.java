@@ -46,6 +46,8 @@ class ReportPipelineTest {
         Map<String, String> conf = new LinkedHashMap<>();
         conf.put("spark.executor.instances", "4");
         conf.put("spark.executor.cores", "2");
+        conf.put("spark.sparkadvisor.threshold.skew.min_tasks", "10");
+        conf.put("spark.sparkadvisor.threshold.skew.abs_ms", "8000");
         return new ApplicationModel("app-demo", "Demo", 0L, 17000L, false, conf,
                 java.util.Arrays.asList(sql), java.util.Arrays.asList(job), java.util.Arrays.asList(skewedStage()),
                 new java.util.ArrayList<>(), new java.util.ArrayList<>());
@@ -74,6 +76,7 @@ class ReportPipelineTest {
         assertTrue(html.contains("20260521_demo"), "shows statementId");
         assertTrue(html.contains("row-warn"), "skewed stage flagged");
         assertTrue(html.contains("Critical path"), "has critical path section");
+        assertTrue(html.contains("Rules not evaluated because evidence is unavailable"));
     }
 
     @Test
@@ -94,6 +97,7 @@ class ReportPipelineTest {
         assertTrue(json.contains("\"executionId\""), "json has executionId");
         assertTrue(json.contains("20260521_demo"), "json has statementId");
         assertTrue(json.contains("\"criticalPathMs\""), "json has critical path");
+        assertTrue(json.contains("\"unavailableRules\""), "json declares capability-gated rules");
     }
 
     @Test

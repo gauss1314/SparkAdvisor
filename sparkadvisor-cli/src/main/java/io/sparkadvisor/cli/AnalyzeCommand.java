@@ -10,6 +10,7 @@ import io.sparkadvisor.report.i18n.ReportLanguage;
 import io.sparkadvisor.report.json.JsonReportWriter;
 import io.sparkadvisor.report.model.AnalysisResult;
 import io.sparkadvisor.report.model.AnalysisResultBuilder;
+import io.sparkadvisor.analyzer.v2.RuleThresholdsV2;
 
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
@@ -74,6 +75,10 @@ public final class AnalyzeCommand implements Callable<Integer> {
                     + "In auto mode, an output filename containing '_zh' keeps the legacy Chinese report behavior.")
     String lang;
 
+    @Option(names = "--rule-config",
+            description = "Path to rules.md-style conf.yaml containing the complete thresholds section.")
+    String ruleConfig;
+
     @Override
     public Integer call() throws Exception {
         org.apache.hadoop.conf.Configuration conf =
@@ -98,7 +103,9 @@ public final class AnalyzeCommand implements Callable<Integer> {
         Path outPath = Paths.get(out != null ? out : "report." + fmt);
         ReportLanguage reportLanguage = ReportLanguage.resolve(lang, outPath);
 
-        AnalysisResult result = new AnalysisResultBuilder(model, path).build(target);
+        RuleThresholdsV2 thresholds = Strings.isBlank(ruleConfig)
+                ? null : RuleThresholdsV2.fromYaml(Paths.get(ruleConfig));
+        AnalysisResult result = new AnalysisResultBuilder(model, path, thresholds).build(target);
 
         // Apply the selected advisor (consumes the structured result, never the raw log).
         io.sparkadvisor.advisor.api.TuningAdvisor advisor =

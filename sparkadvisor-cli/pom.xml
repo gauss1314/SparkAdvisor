@@ -21,6 +21,10 @@
     </dependency>
     <dependency>
       <groupId>io.sparkadvisor</groupId>
+      <artifactId>sparkadvisor-analyzer</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>io.sparkadvisor</groupId>
       <artifactId>sparkadvisor-report</artifactId>
     </dependency>
     <dependency>

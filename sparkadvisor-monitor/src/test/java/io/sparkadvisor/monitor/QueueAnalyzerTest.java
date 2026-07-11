@@ -89,6 +89,8 @@ class QueueAnalyzerTest {
         Map<String, String> conf = new LinkedHashMap<>();
         conf.put("spark.executor.instances", "2");
         conf.put("spark.executor.cores", "2");
+        conf.put("spark.sparkadvisor.threshold.skew.min_tasks", "10");
+        conf.put("spark.sparkadvisor.threshold.skew.abs_ms", "50000");
         return new ApplicationModel("app-queue", "Queue", 1L, 60_000L, false, conf,
                 java.util.Arrays.asList(hog, skewed),
                 java.util.Arrays.asList(job1, job2),
@@ -208,11 +210,11 @@ class QueueAnalyzerTest {
         assertTrue(result.contention().contentionLimitedPct() > 0.0, "one query should be contention-limited");
         assertTrue(result.topSlowQueries().stream().anyMatch(q -> q.executionId() == 2L
                 && q.contentionLimited()));
-        assertTrue(result.bottlenecks().stream().anyMatch(b -> b.ruleId().equals("R1_DATA_SKEW")));
+        assertTrue(result.bottlenecks().stream().anyMatch(b -> b.ruleId().equals("S-01")));
         assertNotNull(result.resources());
         assertTrue(result.meta().deepCoveragePct() > 0.0);
         assertTrue(result.globalRecommendations().stream()
-                .anyMatch(r -> r.queueRuleId().equals("Q2_COMMON_LONG_TAIL_SKEW")));
+                .anyMatch(r -> r.queueRuleId().equals("Q-01")));
     }
 
     @Test
@@ -252,19 +254,13 @@ class QueueAnalyzerTest {
         assertTrue(result.templateStats().stream()
                         .anyMatch(t -> t.queryCount() == 5 && t.totalInputBytes() > 0L),
                 "template stats should aggregate repeated normalized SQL text");
-        assertTrue(result.bottlenecks().stream()
-                        .anyMatch(b -> b.ruleId().equals("R5_SMALL_FILES")
-                                && b.scope().contains("FULL_QUEUE")
-                                && b.affectedQueries() == 5
-                                && b.affectedPct() > 0.80),
-                "small-file cluster should be derived from all completed SQL light metrics");
+        assertTrue(result.bottlenecks().stream().noneMatch(b -> b.ruleId().equals("S-05")),
+                "S-05 requires PLAN_METRICS and must not be inferred from task size alone");
+        assertTrue(result.globalRecommendations().stream().noneMatch(r -> r.queueRuleId().equals("Q-10")),
+                "Q-10 must remain unavailable when S-05/S-06 plan metrics are absent");
         assertTrue(result.globalRecommendations().stream()
-                        .anyMatch(r -> r.queueRuleId().equals("Q7_COMMON_SMALL_FILES")
-                                && r.caveats().contains("Light metrics cover all completed SQL executions")),
-                "Q7 should trigger even though the small-file SQLs were not deep-analyzed");
-        assertTrue(result.globalRecommendations().stream()
-                        .anyMatch(r -> r.queueRuleId().equals("Q14_HIGH_FREQUENCY_TEMPLATE_COST")),
-                "Q14 should prioritize repeated template cost");
+                        .anyMatch(r -> r.queueRuleId().equals("Q-09")),
+                "Q-09 should publish the throughput/template leaderboard");
     }
 
     @Test
@@ -276,8 +272,8 @@ class QueueAnalyzerTest {
                                 && t.totalInputBytes() >= 768L * 1024L * 1024L),
                 "template stats should retain repeated large scan input bytes");
         assertTrue(result.globalRecommendations().stream()
-                        .anyMatch(r -> r.queueRuleId().equals("Q15_REPEATED_LARGE_SCAN_CACHE_OR_MATERIALIZE")),
-                "Q15 should trigger for repeated large scans");
+                        .anyMatch(r -> r.queueRuleId().equals("Q-09")),
+                "Q-09 should retain repeated large scans in the template leaderboard");
     }
 
     @Test
@@ -285,20 +281,18 @@ class QueueAnalyzerTest {
         var result = new QueueAnalyzer().analyze(schedulingAndAttemptQueueApp(),
                 "synthetic-attempts", 1, 0, 60_000L);
 
+        assertTrue(result.bottlenecks().stream().noneMatch(b -> b.ruleId().equals("S-13")),
+                "S-13 requires task scheduler-delay distribution and must not use stage pre-launch gap as a substitute");
         assertTrue(result.bottlenecks().stream()
-                        .anyMatch(b -> b.ruleId().equals("R8_SCHEDULING_DELAY")
+                        .anyMatch(b -> b.ruleId().equals("S-21")
                                 && b.scope().contains("FULL_QUEUE")),
-                "R8 queue cluster should come from full light metrics");
-        assertTrue(result.bottlenecks().stream()
-                        .anyMatch(b -> b.ruleId().equals("R10_TASK_RETRY")
-                                && b.scope().contains("FULL_QUEUE")),
-                "R10 queue cluster should come from full light metrics");
+                "S-21 queue cluster should come from full light metrics");
         assertTrue(result.globalRecommendations().stream()
-                        .anyMatch(r -> r.queueRuleId().equals("Q12_SCHEDULING_COLD_START_OR_POOL_DELAY")),
-                "Q12 should trigger for repeated scheduling delay");
+                        .anyMatch(r -> r.queueRuleId().equals("Q-09")),
+                "Q-09 should retain scheduling-delay queries in queue rankings");
         assertTrue(result.globalRecommendations().stream()
-                        .anyMatch(r -> r.queueRuleId().equals("Q13_QUEUE_RETRY_OR_SPECULATION_NOISE")),
-                "Q13 should trigger for repeated failed attempts");
+                        .anyMatch(r -> r.queueRuleId().equals("Q-01")),
+                "Q-01 should retain the attempt timeline evidence");
     }
 
     @Test

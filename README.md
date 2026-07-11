@@ -9,7 +9,7 @@ SparkAdvisor 是一个以 **Java 8 运行时兼容** 为目标、面向 **Apache
 - **离线解析 event log**：支持单文件、rolling event log 目录、压缩日志与 `.inprogress` 不完整日志。
 - **StatementID 定位 SQL**：通过 SQL 开头的 `/* StatementID */` 注释定位目标语句；若输入纯数字且没有 StatementID 命中，则回退按 `executionId` 定位。
 - **硬指标分析**：计算关键路径、理想耗时、实际墙钟、核心利用率、倾斜比、spill、GC 占比、Stage 启动/资源等待、shuffle fetch wait 与 task attempt 等指标。
-- **规则诊断**：当前单 SQL 规则目录列出 R1-R11 共 11 条规则；其中一部分对应 AQE / 物理计划机会，另一部分对应 event-log 运行时症状。规则说明见 [docs/rules.md](docs/rules.md)，运行时仍以 Java `RuleEngine` 为准。
+- **规则诊断**：按 [docs/rules.md](docs/rules.md) 注册 49 条稳定规则：S 系列 29 条、Q 系列 18 条、DQ 系列 2 条。规则通过 `MetricsContext` 与 capability 声明消费聚合指标；缺少 plan metrics、executor 峰值、host/network 矩阵或 baseline 时显式跳过，绝不把缺失值当成 0 触发。旧 R1-R11 引擎仅保留为迁移兼容入口。
 - **调参预测**：对 shuffle partition 与 executor/core 伸缩做成本模型估计，输出假设、置信度和可能反转条件；倾斜场景会明确提示“调分区通常无效”。
 - **Advisor 建议**：默认使用离线确定性的 `RuleBasedAdvisor`；可通过 `--advise llm` 调用 LLM Advisor，默认 Provider 为 MiniMax-M2.5。LLM 只消费结构化 `AnalysisResult` / `QueueAnalysisResult` JSON，绝不发送原始 event log。
 - **队列级监控分析**：`queue-report` 汇总一整个长驻应用的所有 SQL，输出延迟分位、瓶颈聚类、固定资源池利用率、争用受限查询、资源大户与全局调参建议。
@@ -45,7 +45,7 @@ HDFS Event Log
 项目已完成 M1-M3、F4 与监控模块主体功能：
 
 - **M1**：父 POM、`core/report/cli`、领域模型、分位数估计器、StatementID 提取与定位、event log reader/parser、`MetricAggregator`、`AnalysisResult`、HTML/JSON 报告、CLI `analyze` 端到端。
-- **M2**：`sparkadvisor-analyzer` 规则引擎与 `sparkadvisor-predictor` 成本模型预测；报告新增 Predictions 区域。
+- **M2 / Rules v2**：`sparkadvisor-analyzer` 已实现 49 条 S/Q/DQ 稳定规则目录、外置阈值覆盖、capability gating、partial 降级、suppression 审计与旧 R1-R11 兼容入口；`sparkadvisor-predictor` 提供成本模型预测，报告包含 Predictions 区域。
 - **M3**：History Server tab 插件已实现，采用自给自足策略重解析 event log，不依赖 SHS 内部 store；live Driver tab 通过 `SparkPlugin` 挂载，使用 driver listener 增量快照。
 - **F4**：`TuningAdvisor`、`RuleBasedAdvisor`、`LlmAdvisor`、`MinimaxLlmProvider`（默认 MiniMax-M2.5）、`AnthropicLlmProvider`（可选）、prompt 构造与 LLM JSON 响应解析已实现；LLM 失败时优雅降级。
 - **Monitor**：新增 `sparkadvisor-monitor`，包含 `QueueAnalyzer`、`QuerySeriesCollector`、`ContentionTimeline`、`QueueAggregator`、`QueueRuleEngine`、`QueueAnalysisResult`、队列 HTML/JSON 渲染和队列级 LLM Advisor；CLI 新增 `queue-report`，SHS tab 空 StatementID 时异步生成队列报告。
@@ -53,7 +53,7 @@ HDFS Event Log
 已验证项：
 
 - 全模块已用 JDK 21 执行 `mvn -q clean package` / `mvn -q test` 通过，生产 class major version 验证为 52（Java 8）。
-- analyzer、predictor、advisor、CoreTimeline、规则负例、LLM JSON 解析与端到端报告渲染相关测试已通过。
+- analyzer、predictor、advisor、CoreTimeline、49 条规则 golden trigger/负例/capability/partial/suppression、LLM JSON 解析与端到端报告渲染相关测试已通过。
 - monitor 的争用受限分类、瓶颈聚类、队列级建议、HTML/JSON 契约测试已通过。
 
 生产集群首次部署前建议用目标 Spark 3.5.1 发行版再做一次 `mvn -q -DskipTests package`。触及 Spark 内部 UI/API 的代码仍保留 `// VERIFY@3.5.1` 标注，升级 Spark patch 版本时需复核。
@@ -101,6 +101,7 @@ bin/sparkadvisor analyze \
 | `--auth-to-local` | 覆盖 Hadoop `hadoop.security.auth_to_local` 规则；也可用环境变量 `SPARKADVISOR_AUTH_TO_LOCAL`。 |
 | `--advise none\|rule\|llm` | Advisor 模式，默认 `rule`；`llm` 默认调用 MiniMax-M2.5，需要 `MINIMAX_API_KEY`。可用 `llm:claude` 走 Anthropic。 |
 | `--lang auto\|zh\|en` | 报告语言，默认 `auto`；`auto` 下输出文件名包含 `_zh` 时生成中文，否则英文。 |
+| `--rule-config` | 可选的规则阈值 YAML；格式与 `docs/rules.md` §7 的完整 `thresholds:` 区一致，缺键会失败。 |
 
 `bin/sparkadvisor` 默认给 CLI 设置 `-Xmx4g`，用于覆盖 JDK 在容器/客户端节点上可能选择的较小默认堆，避免 Spark `JsonProtocol` 回放 100MB+ JSON event-log part 时 OOM。可用 `SPARKADVISOR_HEAP=8g` 调整，或用 `SPARKADVISOR_JAVA_OPTS="-Xmx8g -XX:+UseG1GC"` 直接追加 JVM 参数。
 
@@ -191,7 +192,7 @@ HTML 报告包含：
 - 瓶颈聚类：慢查询 top-N 中反复出现的单 SQL 规则
 - 争用报告：争用受限占比、热点时段、资源大户
 - 慢查询榜：StatementID、executionId、耗时、主导瓶颈、争用分类
-- 全局建议：Q1-Q7 队列级规则产出的证据、置信度和覆盖范围
+- 全局建议：Q-01–Q-18 队列级规则产出的证据、置信度和覆盖范围
 - AI 队列建议：`queue-report --advise llm` 生成的队列级总结与建议
 - 页面底部内嵌完整 `QueueAnalysisResult` JSON
 

@@ -10,6 +10,7 @@ import io.sparkadvisor.core.model.ApplicationModel;
 import io.sparkadvisor.core.model.SqlExecution;
 import io.sparkadvisor.core.util.Java8Collections;
 import io.sparkadvisor.predictor.PredictionService;
+import io.sparkadvisor.analyzer.v2.RuleThresholdsV2;
 
 import java.util.Comparator;
 import java.util.Map;
@@ -28,17 +29,22 @@ public final class QuerySeriesCollector {
     private final int topN;
     private final int samplePerStratum;
     private final MetricAggregator aggregator;
-    private final PerformanceAnalyzer performanceAnalyzer = new PerformanceAnalyzer();
+    private final PerformanceAnalyzer performanceAnalyzer;
     private final PredictionService predictionService = new PredictionService();
 
     public QuerySeriesCollector(ApplicationModel app, int topN) {
-        this(app, topN, 5);
+        this(app, topN, 5, null);
     }
 
     public QuerySeriesCollector(ApplicationModel app, int topN, int samplePerStratum) {
+        this(app, topN, samplePerStratum, null);
+    }
+
+    public QuerySeriesCollector(ApplicationModel app, int topN, int samplePerStratum, RuleThresholdsV2 thresholds) {
         this.topN = Math.max(1, topN);
         this.samplePerStratum = Math.max(0, samplePerStratum);
         this.aggregator = new MetricAggregator(app);
+        this.performanceAnalyzer = thresholds == null ? new PerformanceAnalyzer() : new PerformanceAnalyzer(thresholds);
     }
 
     public List<QuerySample> collect(ApplicationModel app) {
@@ -47,13 +53,13 @@ public final class QuerySeriesCollector {
                 .map(sql -> lightSample(app, sql))
                 .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
         List<QuerySample> lightSamples = light.stream()
-                .map(sample -> sample.toQuerySample(false, performanceAnalyzer, predictionService, app.conf()))
+                .map(sample -> sample.toQuerySample(false, performanceAnalyzer, predictionService, app.conf(), app.incomplete()))
                 .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
         Set<Long> deepExecutionIds = new DeepAnalysisSelector(topN, samplePerStratum).select(lightSamples);
 
         return Java8Collections.listCopy(light.stream()
                 .map(sample -> sample.toQuerySample(deepExecutionIds.contains(sample.sql.executionId()),
-                        performanceAnalyzer, predictionService, app.conf()))
+                        performanceAnalyzer, predictionService, app.conf(), app.incomplete()))
                 .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new)));
     }
 
@@ -134,9 +140,10 @@ public final class QuerySeriesCollector {
         }
 
         QuerySample toQuerySample(boolean deep, PerformanceAnalyzer analyzer,
-                                  PredictionService predictionService, Map<String, String> conf) {
+                                  PredictionService predictionService, Map<String, String> conf,
+                                  boolean incomplete) {
             List<Finding> findings = deep
-                    ? analyzer.analyze(analysis, conf)
+                    ? analyzer.analyzeV2(analysis, conf, incomplete)
                     : Java8Collections.<Finding>listOf();
             PredictionService.Predictions predictions = deep
                     ? predictionService.predict(analysis, conf)

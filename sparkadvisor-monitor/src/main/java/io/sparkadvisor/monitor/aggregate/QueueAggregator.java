@@ -1,6 +1,6 @@
 package io.sparkadvisor.monitor.aggregate;
 
-import io.sparkadvisor.analyzer.RuleThresholds;
+import io.sparkadvisor.analyzer.v2.RuleThresholdsV2;
 import io.sparkadvisor.core.analyze.SqlAnalysis;
 import io.sparkadvisor.core.analyze.StageAnalysis;
 import io.sparkadvisor.core.finding.Finding;
@@ -30,9 +30,11 @@ import java.util.Set;
  */
 public final class QueueAggregator {
 
-    private static final RuleThresholds LIGHT_RULE_THRESHOLDS = RuleThresholds.defaults();
+    private final QueueRuleEngine ruleEngine;
+    private final RuleThresholdsV2 lightThresholds;
 
-    private final QueueRuleEngine ruleEngine = new QueueRuleEngine();
+    public QueueAggregator(){this(null);}
+    public QueueAggregator(RuleThresholdsV2 thresholds){this.lightThresholds=thresholds==null?RuleThresholdsV2.defaults():thresholds;this.ruleEngine=new QueueRuleEngine(this.lightThresholds);}
 
     public QueueAnalysisResult aggregate(ApplicationModel app,
                                          List<QuerySample> samples,
@@ -73,7 +75,7 @@ public final class QueueAggregator {
                 Java8Collections.<QueueAnalysisResult.QueueRecommendation>listOf(),
                 null,
                 meta(app, sourcePath, topN, samples, context));
-        return base.withRecommendations(ruleEngine.recommend(base));
+        return base.withRecommendations(ruleEngine.recommend(base, app, samples));
     }
 
     public static int fixedCores(ApplicationModel app) {
@@ -180,74 +182,47 @@ public final class QueueAggregator {
         count.add(executionId, lightEvidence);
     }
 
-    private static List<RuleSignal> lightSignals(QuerySample sample) {
+    private List<RuleSignal> lightSignals(QuerySample sample) {
         List<RuleSignal> signals = new ArrayList<RuleSignal>();
         SqlAnalysis analysis = sample.sqlAnalysis();
         if (analysis == null) {
             return signals;
         }
 
-        RuleThresholds t = LIGHT_RULE_THRESHOLDS;
-        if (sample.coreUtilization() > 0.0 && sample.coreUtilization() < t.coreUtilLow()) {
-            signals.add(new RuleSignal("R3_LOW_PARALLELISM", "parallelism"));
-        }
-
-        String plan = analysis.physicalPlanText();
-        if (!Strings.isBlank(plan)) {
-            boolean hasSortMergeJoin = plan.contains("SortMergeJoin");
-            boolean hasBroadcastJoin = plan.contains("BroadcastHashJoin")
-                    || plan.contains("BroadcastNestedLoopJoin");
-            if (hasSortMergeJoin && !hasBroadcastJoin) {
-                signals.add(new RuleSignal("R7_BROADCAST_JOIN", "join"));
-            }
-            boolean hasSort = plan.contains("Sort");
-            boolean hasAggregate = plan.contains("HashAggregate")
-                    || plan.contains("ObjectHashAggregate")
-                    || plan.contains("SortAggregate");
-            if ((hasSort || hasAggregate) && sample.spillBytes() > 0L) {
-                signals.add(new RuleSignal("R11_SORT_AGG_SPILL", "plan"));
-            }
-        }
+        RuleThresholdsV2 t = lightThresholds;
 
         Set<String> stageLevelRules = new HashSet<String>();
         for (StageAnalysis st : analysis.stages()) {
-            if (st.skewRatio() >= t.skewRatioWarn()
-                    || st.shuffleSkewRatio() >= t.shuffleSkewWarn()) {
-                stageLevelRules.add("R1_DATA_SKEW|skew");
+            if (st.numTasks() >= t.get("skew.min_tasks")
+                    && st.maxTaskMs() >= t.get("skew.abs_ms")
+                    && st.skewRatio() >= t.get("skew.ratio")) {
+                stageLevelRules.add("S-01|skew");
             }
-            if (st.spillBytes() > 0L
-                    && (double) st.spillBytes() / (double) Math.max(st.shuffleReadBytes(), 1L)
-                    >= t.spillRatioWarn()) {
-                stageLevelRules.add("R2_EXCESSIVE_SPILL|spill");
+            if (st.shuffleReadMaxBytes() >= t.get("skew.bytes_abs")
+                    && st.shuffleSkewRatio() >= t.get("skew.bytes_ratio")) {
+                stageLevelRules.add("S-02|skew");
             }
-            if (st.medianTaskMs() > 0L && st.medianTaskMs() < t.smallTaskMedianMs()
-                    && st.numTasks() >= t.overParallelMinTasks()) {
-                stageLevelRules.add("R4_OVER_PARALLELISM|parallelism");
+            if (st.shuffleReadMedianBytes() >= t.get("partitions.huge_bytes")) {
+                stageLevelRules.add("S-04|parallelism");
             }
-            if (st.inputBytes() > 0L && st.numTasks() >= t.overParallelMinTasks()
-                    && st.medianInputBytesPerTask() > 0L
-                    && st.medianInputBytesPerTask() < t.smallInputPerTaskBytes()) {
-                stageLevelRules.add("R5_SMALL_FILES|small-files");
+            if (st.diskSpillBytes() >= t.get("spill.abs_bytes")
+                    || (double) st.diskSpillBytes()
+                    / (double) Math.max(st.shuffleWriteBytes() + st.inputBytes(), 1L)
+                    >= t.get("spill.ratio")) {
+                stageLevelRules.add("S-07|spill");
             }
-            if (st.gcRatio() >= t.gcRatioWarn()) {
-                stageLevelRules.add("R6_GC_PRESSURE|gc");
+            if (st.totalTaskTimeMs() >= t.get("gc.min_runtime_ms")
+                    && st.gcRatio() >= t.get("gc.warn")) {
+                stageLevelRules.add("S-08|gc");
             }
-            if (st.wallClockMs() > 0L && st.schedulingDelayMs() > 0L
-                    && (double) st.schedulingDelayMs() / (double) st.wallClockMs()
-                    >= t.schedulingDelayRatioWarn()) {
-                stageLevelRules.add("R8_SCHEDULING_DELAY|scheduling");
-            }
-            if (st.shuffleReadBytes() > 0L && st.shuffleFetchWaitMs() > 0L
+            if (st.shuffleReadBytes() >= t.get("fetch_wait.min_shuffle_bytes")
                     && st.totalTaskTimeMs() > 0L
                     && (double) st.shuffleFetchWaitMs() / (double) st.totalTaskTimeMs()
-                    >= t.shuffleFetchWaitRatioWarn()) {
-                stageLevelRules.add("R9_SHUFFLE_FETCH_WAIT|shuffle");
+                    >= t.get("fetch_wait.ratio")) {
+                stageLevelRules.add("S-11|shuffle");
             }
-            double extraRatio = st.numTasks() <= 0 ? 0.0
-                    : (double) st.extraTaskAttempts() / (double) st.numTasks();
-            if (st.failedTaskAttempts() >= t.failedTaskAttemptsWarn()
-                    || extraRatio >= t.extraTaskAttemptRatioWarn()) {
-                stageLevelRules.add("R10_TASK_RETRY|reliability");
+            if (st.failedTaskAttempts() > 0 || st.extraTaskAttempts() > 0) {
+                stageLevelRules.add("S-21|reliability");
             }
         }
         for (String signal : stageLevelRules) {

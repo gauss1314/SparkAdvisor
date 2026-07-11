@@ -275,7 +275,15 @@ public final class ReportText {
         if (language == null || !language.isChinese()) {
             return type.name();
         }
-        return type == Recommendation.Type.SQL_REWRITE ? "SQL 改写" : "Spark 配置";
+        switch (type) {
+            case SESSION_SET: return "会话参数";
+            case RESTART_CONF: return "重启配置";
+            case REWRITE:
+            case SQL_REWRITE: return "SQL 改写";
+            case GOVERNANCE: return "数据/平台治理";
+            case SPARK_CONF:
+            default: return "Spark 配置";
+        }
     }
 
     public static String findingExplanation(Finding f, ReportLanguage language) {
@@ -284,6 +292,11 @@ public final class ReportText {
         }
         Integer stage = f.targetStageId();
         String sid = stage == null ? "SQL" : "Stage " + stage;
+        if ("S-01".equals(f.ruleId())) {
+            return sid + " 存在数据倾斜：最慢 Task 约为中位数的 "
+                    + ratio(evidenceDouble(f, "task_duration.max_ms"), Math.max(1.0, evidenceDouble(f, "task_duration.p50_ms")))
+                    + " 倍；该 Stage 受长尾 Task 限制，单纯增加 Executor 通常无效。";
+        }
         if ("R1_DATA_SKEW".equals(f.ruleId())) {
             return sid + " 存在数据倾斜：最慢 Task 约为中位数的 "
                     + max(evidenceDouble(f, "durationSkewRatio"), evidenceDouble(f, "shuffleReadSkewRatio"))
@@ -409,6 +422,10 @@ public final class ReportText {
 
     private static double max(double a, double b) {
         return Math.max(a, b);
+    }
+
+    private static double ratio(double a, double b) {
+        return b <= 0.0 ? 0.0 : a / b;
     }
 
     private static String pct(double v) {

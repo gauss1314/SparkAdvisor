@@ -48,6 +48,7 @@ public final class MetricDistributionBuilder {
                 quantile(0.50),
                 quantile(0.75),
                 quantile(0.90),
+                quantile(0.95),
                 max,
                 sum);
     }

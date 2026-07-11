@@ -97,6 +97,16 @@ public final class HtmlReportWriter {
                             "Event log 可能不完整或被截断；部分指标可能缺失，结论置信度会降低。"))
                     .append("</div>");
         }
+        if (!r.meta().unavailableRules().isEmpty()) {
+            h.append("<details class=\"banner warn\"><summary>")
+                    .append(t(zh, "Rules not evaluated because evidence is unavailable", "因证据能力缺失而未评估的规则"))
+                    .append(" (").append(r.meta().unavailableRules().size()).append(")</summary><ul>");
+            for (java.util.Map.Entry<String, java.util.List<String>> entry : r.meta().unavailableRules().entrySet()) {
+                h.append("<li><code>").append(esc(entry.getKey())).append("</code>: ")
+                        .append(esc(String.join(", ", entry.getValue()))).append("</li>");
+            }
+            h.append("</ul></details>");
+        }
 
         appOverview(h, r, zh);
         if (r.targetSql() != null) {

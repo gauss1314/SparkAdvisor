@@ -3,7 +3,7 @@
 | 项 | 内容 |
 |---|---|
 | 文档版本 | v2.0（合并版） |
-| 状态 | 与当前代码基线对齐；新版规则体系进入迁移阶段 |
+| 状态 | 与当前代码基线对齐；49 条稳定规则已实现，能力型证据持续增强 |
 | 适用版本 | Apache Spark 3.5.1 / Scala 2.12 |
 | 运行时基线 | 生产代码兼容 Java 8，使用 JDK 21 编译 |
 | 目标场景 | 单 SQL 事后诊断 + 长驻共享查询队列的一整轮聚合分析 |
@@ -14,8 +14,8 @@
 
 需要特别区分两个口径：
 
-- **当前实现基线**：仓库已经完成 Java 多模块、单 SQL 分析、预测、Advisor、队列分析、CLI、History Server 与 Live Driver UI 接入；运行时规则仍使用旧的 `R1–R11` 和 `Q1–Q15` ID。
-- **目标规则体系**：`rules.md` 定义 49 条稳定规则，即 S 系列 29 条、Q 系列 18 条、DQ 系列 2 条。它是下一轮规则实现和旧 ID 迁移的权威目标，不能把尚未迁移的规则描述为已经在运行时生效。
+- **当前实现基线**：仓库已经完成 Java 多模块、单 SQL 分析、预测、Advisor、队列分析、CLI、History Server 与 Live Driver UI 接入；生产报告默认使用稳定的 S/Q/DQ 规则 ID。
+- **规则体系**：`rules.md` 定义并驱动 49 条稳定规则，即 S 系列 29 条、Q 系列 18 条、DQ 系列 2 条。旧 `R1–R11` 引擎只保留为迁移兼容入口，不再作为默认报告规则源。
 
 ---
 
@@ -469,33 +469,19 @@ Finding 至少包含 `ruleId`、scope、severity、目标 execution/stage、证�
 
 完整联动矩阵以 `rules.md` §6 为准。
 
-### 7.6 当前实现基线与迁移
+### 7.6 当前实现基线与兼容
 
-当前 `sparkadvisor-analyzer` 实现 11 条旧 ID 规则：
+`sparkadvisor-analyzer` 已提供统一的 `MetricsContext`、`Capability`、`RuleThresholdsV2`、`RuleCatalogV2` 与 `RuleEngineV2`：
 
-| 当前 ID | 能力 | 目标规则主要对应 |
-|---|---|---|
-| `R1_DATA_SKEW` | task/字节长尾倾斜 | S-01、S-02 |
-| `R2_EXCESSIVE_SPILL` | spill 压力 | S-07 |
-| `R3_LOW_PARALLELISM` | 欠并行/低利用率 | S-04，并与 S-14 联动 |
-| `R4_OVER_PARALLELISM` | 过多小 task | S-03 |
-| `R5_SMALL_FILES` | scan 小文件 | S-05 |
-| `R6_GC_PRESSURE` | GC 压力 | S-08 |
-| `R7_BROADCAST_JOIN` | broadcast 机会 | S-17 |
-| `R8_SCHEDULING_DELAY` | stage 启动等待 | S-13 |
-| `R9_SHUFFLE_FETCH_WAIT` | fetch wait | S-11 |
-| `R10_TASK_RETRY` | task attempt/retry | S-21 的部分能力 |
-| `R11_SORT_AGG_SPILL` | sort/aggregate spill 归因 | S-07 与执行计划证据 |
+- `RuleCatalogV2` 注册 29 个 S、18 个 Q、2 个 DQ 稳定 ID；
+- 阈值默认值与 `rules.md` §7 对齐，可通过 `spark.sparkadvisor.threshold.<key>` 覆盖；
+- 每条规则声明 scope、capability 和阈值键，缺少能力时跳过并由 `RuleRunResult.unavailableRules` 记录原因；
+- `Finding` 输出 score、confidence、caveat、suppressed 与 suppression reason；
+- partial Stage 的 CRITICAL 自动封顶 WARN，并降低 confidence；
+- Recommendation 原生支持 `SESSION_SET`、`RESTART_CONF`、`REWRITE`、`GOVERNANCE`；
+- 单 SQL `AnalysisResultBuilder` 与队列 `QueueRuleEngine` 默认使用稳定 ID。
 
-当前 `QueueRuleEngine` 实现旧 `Q1–Q15` 队列建议，覆盖反复 spill/倾斜、静态分区冲突、容量/争用、低效繁忙、小文件、GC、公平性、CBO/join、机制缺口、调度等待、attempt 噪声和高频模板等。**旧 Q 编号与新版 `rules.md` 的 Q 编号并非逐项同义，迁移时禁止按数字直接替换。**
-
-迁移要求：
-
-1. 新开发只使用 `rules.md` 的 S/Q/DQ 稳定 ID，不再扩展旧 R ID；
-2. 建立旧 ID → 新 ID 的显式兼容映射，必要时在 JSON 中同时输出 `legacyRuleId`；
-3. 逐条补齐 `rules.md` 要求的 evidence、action type、阈值键和 golden test；
-4. 把阈值从 Java 默认常量迁到配置化 `Thresholds`，并做“规则声明键 ↔ 配置键”双向校验；
-5. 只有实现、测试和报告都完成后，才能把规则标记为“已落地”。
+旧 `R1–R11` 类仍由 `PerformanceAnalyzer.analyzeLegacy()` 暴露，用于旧 JSON/测试和外部调用方的过渡兼容；新功能不得继续扩展旧 ID。现有 core adapter 已提供基础 TaskMetrics、分位数、spill、GC、fetch、attempt、计划文本和队列时间线。依赖 `PLAN_METRICS`、`STAGE_EXECUTOR_METRICS`、`HOST_METRICS`、`NETWORK_MATRIX`、`BASELINE` 的规则在对应采集能力未提供时保持“未评估”，不会误报。
 
 ### 7.7 规则生命周期
 
@@ -556,7 +542,7 @@ bin/sparkadvisor analyze \
   --lang auto
 ```
 
-主要参数：`--path`、`--statement-id`、`--format html|json`、`--out`、`--top`、`--keep-raw`、`--hadoop-conf-dir`、`--auth-to-local`、`--advise none|rule|llm|llm:claude`、`--lang auto|zh|en`。
+主要参数：`--path`、`--statement-id`、`--format html|json`、`--out`、`--top`、`--keep-raw`、`--hadoop-conf-dir`、`--auth-to-local`、`--advise none|rule|llm|llm:claude`、`--lang auto|zh|en`、`--rule-config <conf.yaml>`。规则配置必须包含与 `rules.md` §7 一致的完整 `thresholds:` 区；缺键直接失败，未被规则声明的键可通过双向校验报告。
 
 ### 9.2 队列
 
@@ -575,6 +561,7 @@ bin/sparkadvisor queue-report \
 - `--top` 控制最慢 SQL 深分析数量；
 - `--sample-per-stratum` 控制 spill/fetch/GC/skew/template 等分层补样；
 - `--bucket` 支持 `15m`、`1h`、`3600s` 等，最小 1 分钟；
+- `--rule-config` 与单 SQL 命令共用同一阈值文件；
 - 队列 Advisor 当前支持 `none|llm`；
 - CLI 对完整历史日志同步分析，对 `.inprogress` 结果保持 incomplete 标记。
 
@@ -712,23 +699,23 @@ mvn -q clean package
 ### 14.1 已完成基线
 
 - M1：core/report/cli、领域模型、流式分位数、StatementID、reader/parser、`AnalysisResult`、HTML/JSON、`analyze`；
-- M2：旧版单 SQL RuleEngine、shuffle/executor predictor、预测报告；
+- M2 / Rules v2：49 条 S/Q/DQ 规则目录、capability gating、外置阈值、partial 降级、suppression、四类 action type、旧规则兼容入口，以及 shuffle/executor predictor；
 - M3：History Server Tab 自给自足集成，以及可选 Live Driver Tab；
 - F4：RuleBased/LLM Advisor、MiniMax/Anthropic Provider、结构化 prompt/响应和失败降级；
-- Monitor/Q-M4 主体：`QueueAnalyzer`、QuerySample、分层抽样、ContentionTimeline、QueueAggregator、旧版 Q1–Q15、`QueueAnalysisResult`、队列 HTML/JSON、队列 LLM Advisor、CLI 与 SHS 队列入口；
+- Monitor/Q-M4 主体：`QueueAnalyzer`、QuerySample、分层抽样、ContentionTimeline、QueueAggregator、Q-01–Q-18、`QueueAnalysisResult`、队列 HTML/JSON、队列 LLM Advisor、CLI 与 SHS 队列入口；
 - JDK 21 构建 Java 8 bytecode、Maven 测试与 class major version 52 验证已完成。
 
-### 14.2 规则 v2 迁移优先级
+### 14.2 规则证据增强优先级
 
-后续重点不是重写整体框架，而是在现有 Java 数据流和契约上落实 `rules.md`：
+规则执行框架与 49 条触发逻辑已经落地，后续重点是不重写框架地增强可选 evidence：
 
-1. 建立 `MetricsContext`、能力声明、外置阈值和稳定 S/Q/DQ ID；
-2. 先迁移已有 R/Q 能力，保持结果兼容；
-3. 补齐 `rules.md` 标记的首批规则及其 evidence/action type/golden tests；
-4. 实现 DQ 降级、失败风暴、规则仲裁和 suppressions；
-5. 扩展 operator metric、host/network、基线与重启窗口所需字段；
-6. 报告按四种 action type、规则联动与可信度重组；
-7. 完成 49 条后再移除旧 ID 的默认展示，兼容字段保留一个明确版本周期。
+1. 完成 sparkPlanInfo accumulator → operator metrics 映射，扩大 `PLAN_METRICS` 覆盖；
+2. 采集 StageExecutorMetrics，解锁 executor/driver 峰值与趋势；
+3. 为 TaskInterval 补充 host、shuffle source/destination 与 locality 聚合；
+4. 建立 fingerprint 与 queue baseline 持久化，解锁 S-22/Q-18；
+5. 将 `unavailableRules` 与 DQ 结论完整呈现在 HTML 的解析质量章节；
+6. 用真实生产轮次校准阈值、score 和联动仲裁；
+7. 在兼容周期结束后移除旧 R ID 的默认展示与入口。
 
 ### 14.3 可选优化
 

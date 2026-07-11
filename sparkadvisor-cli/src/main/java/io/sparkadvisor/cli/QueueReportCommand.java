@@ -8,6 +8,7 @@ import io.sparkadvisor.monitor.render.QueueHtmlWriter;
 import io.sparkadvisor.monitor.render.QueueJsonWriter;
 import io.sparkadvisor.core.util.Strings;
 import io.sparkadvisor.report.i18n.ReportLanguage;
+import io.sparkadvisor.analyzer.v2.RuleThresholdsV2;
 
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
@@ -68,12 +69,18 @@ public final class QueueReportCommand implements Callable<Integer> {
                     + "In auto mode, an output filename containing '_zh' renders Chinese.")
     String lang;
 
+    @Option(names = "--rule-config",
+            description = "Path to rules.md-style conf.yaml containing the complete thresholds section.")
+    String ruleConfig;
+
     @Override
     public Integer call() throws Exception {
         org.apache.hadoop.conf.Configuration conf =
                 HadoopCliConfiguration.load(hadoopConfDir, authToLocal);
 
-        QueueAnalysisResult result = new QueueAnalyzer(conf)
+        RuleThresholdsV2 thresholds = Strings.isBlank(ruleConfig)
+                ? null : RuleThresholdsV2.fromYaml(Paths.get(ruleConfig));
+        QueueAnalysisResult result = new QueueAnalyzer(conf, thresholds)
                 .analyze(path, top, samplePerStratum, parseDurationMs(bucket));
         String fmt = format == null ? "html" : format.toLowerCase();
         Path outPath = Paths.get(out != null ? out : "queue-report." + fmt);
